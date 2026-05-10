@@ -1,0 +1,51 @@
+name: AI Code Review
+description: >
+  Review a GitHub Pull Request using a self-hosted vLLM instance.
+  Posts a structured Markdown comment directly on the PR.
+
+inputs:
+  vllm-url:
+    description: 'Base URL of the vLLM server (e.g. http://192.168.1.87:30000/v1)'
+    required: true
+  github-token:
+    description: 'GitHub token for fetching PR diff and posting the review comment'
+    required: true
+  vllm-model:
+    description: 'Override model ID. Auto-detected from /v1/models if empty.'
+    required: false
+    default: ''
+  vllm-timeout:
+    description: 'Total request timeout in seconds'
+    required: false
+    default: '120'
+  vllm-retries:
+    description: 'Number of retries on LLM request failure'
+    required: false
+    default: '2'
+
+runs:
+  using: composite
+  steps:
+    - name: Install Python dependencies
+      shell: bash
+      run: pip install openai httpx requests --quiet
+
+    - name: Validate required inputs
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.vllm-url }}" ]; then
+          echo "::error::Input 'vllm-url' is required but was not provided."
+          exit 1
+        fi
+
+    - name: Run AI Code Review
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        VLLM_BASE_URL: ${{ inputs.vllm-url }}
+        VLLM_MODEL: ${{ inputs.vllm-model }}
+        VLLM_TIMEOUT: ${{ inputs.vllm-timeout }}
+        VLLM_RETRIES: ${{ inputs.vllm-retries }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+      run: python3 ${{ github.action_path }}/reviewer.py
