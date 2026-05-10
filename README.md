@@ -21,7 +21,7 @@ Reviews a Pull Request diff using a self-hosted [vLLM](https://github.com/vllm-p
 - name: AI Code Review
   uses: WillIsback/ai-devops-toolkit/code-review@main
   with:
-    vllm-url: ${{ vars.VLLM_BASE_URL }}
+    vllm-url: ${{ secrets.VLLM_URL }}
     github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
@@ -38,8 +38,17 @@ Reviews a Pull Request diff using a self-hosted [vLLM](https://github.com/vllm-p
 #### Prerequisites
 
 - A self-hosted GitHub Actions runner with network access to your vLLM instance
-- Repository/organization variable `VLLM_BASE_URL` set to your vLLM endpoint
+- Repository/organization secret `VLLM_URL` (or equivalent) set to your vLLM endpoint
 
 #### Model detection
 
 The action auto-detects the loaded model by querying `/v1/models`. Set `vllm-model` only to override.
+
+#### Qwen reasoning mode
+
+For Qwen reasoning models, the action requests non-thinking mode per request so the final answer is returned directly in `message.content`:
+
+- `reasoning_effort: "none"`
+- `extra_body: {"chat_template_kwargs": {"enable_thinking": false}}`
+
+This avoids responses that only contain reasoning traces without final review content.
