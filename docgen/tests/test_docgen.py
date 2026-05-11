@@ -421,3 +421,6 @@ class TestApplyWithGit:
             # checkout back to original branch called even on failure
             checkout_calls = [c.args for c in mock_repo.git.checkout.call_args_list]
             assert any("feature/x" in str(c) for c in checkout_calls)
+            # assert branch was NOT deleted on failure (left for inspection)
+            delete_calls = [str(c.args) for c in mock_repo.git.branch.call_args_list]
+            assert not any("-d" in call for call in delete_calls)

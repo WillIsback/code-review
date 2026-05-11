@@ -217,6 +217,7 @@ def apply_with_git(patched: dict[Path, str], repo_path: Path = Path(".")) -> Non
     repo = git.Repo(repo_path, search_parent_directories=True)
     branch_name = f"docgen/{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     original_branch = repo.active_branch.name
+    success = False
 
     repo.git.checkout("-b", branch_name)
     try:
@@ -226,6 +227,7 @@ def apply_with_git(patched: dict[Path, str], repo_path: Path = Path(".")) -> Non
         repo.git.commit("-m", "docs: add docstrings via docgen")
         repo.git.checkout(original_branch)
         repo.git.merge(branch_name, "--no-ff", "-m", f"docs: merge {branch_name}")
+        success = True
     except Exception as e:
         typer.echo(f"  ✗ Git error: {e}", err=True)
         typer.echo(f"  Branch '{branch_name}' left for manual inspection.", err=True)
@@ -235,7 +237,8 @@ def apply_with_git(patched: dict[Path, str], repo_path: Path = Path(".")) -> Non
             pass
         raise
     finally:
-        try:
-            repo.git.branch("-d", branch_name)
-        except Exception:
-            pass
+        if success:
+            try:
+                repo.git.branch("-d", branch_name)
+            except Exception:
+                pass
