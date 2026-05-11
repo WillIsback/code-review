@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/toolkit-core",
+    "crates/docgen-cli",
+    "crates/code-review-cli",
+]
+
+[workspace.dependencies]
+tokio       = { version = "1", features = ["full"] }
+reqwest     = { version = "0.12", features = ["json"] }
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+thiserror   = "2"
+miette      = { version = "7", features = ["fancy"] }
+clap        = { version = "4", features = ["derive"] }
