@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 import importlib
 import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
+from typer.testing import CliRunner
 
 
 class TestGetConfig:
@@ -424,3 +425,66 @@ class TestApplyWithGit:
             # assert branch was NOT deleted on failure (left for inspection)
             delete_calls = [str(c.args) for c in mock_repo.git.branch.call_args_list]
             assert not any("-d" in call for call in delete_calls)
+
+
+class TestCli:
+    def _runner(self):
+        import docgen.docgen as m
+        return CliRunner(), m.app
+
+    def test_exits_1_on_dirty_tree(self):
+        runner, app = self._runner()
+        with patch("docgen.docgen.check_dirty_tree", return_value=["src/foo.py"]):
+            result = runner.invoke(app, ["src/"])
+        assert result.exit_code == 1
+        assert "uncommitted changes" in result.output
+
+    def test_exits_1_when_vllm_unreachable(self):
+        runner, app = self._runner()
+        with patch("docgen.docgen.check_dirty_tree", return_value=[]), \
+             patch("docgen.docgen.check_vllm_reachable", return_value=False):
+            result = runner.invoke(app, ["src/"])
+        assert result.exit_code == 1
+        assert "not reachable" in result.output
+
+    def test_exits_1_when_model_not_detected(self):
+        runner, app = self._runner()
+        with patch("docgen.docgen.check_dirty_tree", return_value=[]), \
+             patch("docgen.docgen.check_vllm_reachable", return_value=True), \
+             patch("docgen.docgen.detect_model", return_value=None):
+            result = runner.invoke(app, ["src/"])
+        assert result.exit_code == 1
+
+    def test_exits_2_when_no_files_found(self):
+        runner, app = self._runner()
+        with tempfile.TemporaryDirectory() as d:
+            with patch("docgen.docgen.check_dirty_tree", return_value=[]), \
+                 patch("docgen.docgen.check_vllm_reachable", return_value=True), \
+                 patch("docgen.docgen.detect_model", return_value="test-model"):
+                result = runner.invoke(app, [d])
+        assert result.exit_code == 2
+
+    def test_exits_2_when_all_files_already_documented(self):
+        runner, app = self._runner()
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "foo.py"
+            f.write_text('def foo():\n    """Already documented."""\n    pass\n')
+            with patch("docgen.docgen.check_dirty_tree", return_value=[]), \
+                 patch("docgen.docgen.check_vllm_reachable", return_value=True), \
+                 patch("docgen.docgen.detect_model", return_value="test-model"):
+                result = runner.invoke(app, [str(f)])
+        assert result.exit_code == 2
+
+    def test_exits_0_on_success(self):
+        runner, app = self._runner()
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "foo.py"
+            f.write_text("def foo():\n    return 1\n")
+            with patch("docgen.docgen.check_dirty_tree", return_value=[]), \
+                 patch("docgen.docgen.check_vllm_reachable", return_value=True), \
+                 patch("docgen.docgen.detect_model", return_value="test-model"), \
+                 patch("docgen.docgen.process_files_async", new_callable=AsyncMock,
+                       return_value={f: 'def foo():\n    """Docs."""\n    return 1\n'}), \
+                 patch("docgen.docgen.apply_with_git"):
+                result = runner.invoke(app, [str(f)])
+        assert result.exit_code == 0

@@ -211,6 +211,55 @@ async def process_files_async(
     return {path: content for path, content in results if content is not None}
 
 
+@app.command()
+def main(
+    target: Path = typer.Argument(..., help="File or folder to process"),
+    fmt: Optional[str] = typer.Option(None, "--format", help="Docstring format: mkdocs, tsdoc (auto-detected if omitted)"),
+    recursive: bool = typer.Option(False, "--recursive", "-r", help="Recurse into subdirectories"),
+    force: bool = typer.Option(False, "--force", help="Regenerate existing docstrings"),
+) -> None:
+    config = get_config()
+
+    dirty = check_dirty_tree()
+    if dirty:
+        typer.echo("✗ Working tree has uncommitted changes. Commit or stash before running docgen:")
+        for f in dirty:
+            typer.echo(f"  {f}")
+        raise typer.Exit(1)
+
+    if not check_vllm_reachable(config["vllm_base_url"]):
+        typer.echo(f"✗ vLLM not reachable at {config['vllm_base_url']}")
+        raise typer.Exit(1)
+
+    model = detect_model(config["vllm_base_url"])
+    if not model:
+        typer.echo("✗ Could not detect model from vLLM server")
+        raise typer.Exit(1)
+
+    files = resolve_files(target, recursive)
+    if not files:
+        typer.echo("⚠️  No Python or TypeScript files found.")
+        raise typer.Exit(2)
+
+    to_process = [f for f in files if needs_docstrings(f, force)]
+    if not to_process:
+        typer.echo("✓ Nothing to do — all files are already documented.")
+        raise typer.Exit(2)
+
+    typer.echo(f"📝 Processing {len(to_process)} file(s) in batches of {config['batch_size']}...")
+    patched = asyncio.run(
+        process_files_async(to_process, fmt, force, model, config["batch_size"], config["vllm_base_url"])
+    )
+
+    if not patched:
+        typer.echo("⚠️  No files were successfully processed.")
+        raise typer.Exit(1)
+
+    typer.echo("🔀 Applying changes via git branch...")
+    apply_with_git(patched)
+    typer.echo(f"✓ Done. Docstrings added to {len(patched)} file(s).")
+
+
 def apply_with_git(patched: dict[Path, str], repo_path: Path = Path(".")) -> None:
     """Write patched files in a short-lived git branch and merge back into current branch."""
     from datetime import datetime
@@ -242,3 +291,7 @@ def apply_with_git(patched: dict[Path, str], repo_path: Path = Path(".")) -> Non
                 repo.git.branch("-d", branch_name)
             except Exception:
                 pass
+
+
+if __name__ == "__main__":
+    app()
