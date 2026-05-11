@@ -224,3 +224,44 @@ class TestTsHasMissingDocstrings:
         source = "const x = 1;\nconst y = 2;\n"
         import docgen.docgen as m
         assert m.ts_has_missing_docstrings(source) is False
+
+
+class TestNeedsDocstrings:
+    def test_routes_py_to_python_parser(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "foo.py"
+            f.write_text("def bar():\n    return 1\n")
+            import docgen.docgen as m
+            assert m.needs_docstrings(f) is True
+
+    def test_routes_ts_to_ts_parser(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "foo.ts"
+            f.write_text("function greet() {}\n")
+            import docgen.docgen as m
+            assert m.needs_docstrings(f) is True
+
+    def test_unknown_extension_returns_false(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "foo.rb"
+            f.write_text("def bar; end\n")
+            import docgen.docgen as m
+            assert m.needs_docstrings(f) is False
+
+
+class TestGetFormat:
+    def test_py_defaults_to_mkdocs(self):
+        import docgen.docgen as m
+        assert m.get_format(Path("foo.py"), None) == "mkdocs"
+
+    def test_ts_defaults_to_tsdoc(self):
+        import docgen.docgen as m
+        assert m.get_format(Path("foo.ts"), None) == "tsdoc"
+
+    def test_tsx_defaults_to_tsdoc(self):
+        import docgen.docgen as m
+        assert m.get_format(Path("foo.tsx"), None) == "tsdoc"
+
+    def test_explicit_format_overrides(self):
+        import docgen.docgen as m
+        assert m.get_format(Path("foo.py"), "tsdoc") == "tsdoc"

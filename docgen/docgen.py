@@ -112,6 +112,31 @@ def ts_has_missing_docstrings(source: str, force: bool = False) -> bool:
     return False
 
 
+def get_format(file: Path, fmt: Optional[str]) -> str:
+    """Return docstring format: explicit override or auto-detected from extension."""
+    if fmt:
+        return fmt
+    return "mkdocs" if file.suffix == ".py" else "tsdoc"
+
+
+def get_language(file: Path) -> str:
+    """Return human-readable language name for the file."""
+    return "Python" if file.suffix == ".py" else "TypeScript"
+
+
+def needs_docstrings(file: Path, force: bool = False) -> bool:
+    """Return True if this file has functions/classes that need docstrings."""
+    try:
+        source = file.read_text()
+    except OSError:
+        return False
+    if file.suffix == ".py":
+        return python_has_missing_docstrings(source, force)
+    if file.suffix in {".ts", ".tsx"}:
+        return ts_has_missing_docstrings(source, force)
+    return False
+
+
 def detect_model(base_url: str) -> Optional[str]:
     """Query /v1/models and return the first available model ID."""
     try:
