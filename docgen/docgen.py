@@ -154,3 +154,59 @@ def detect_model(base_url: str) -> Optional[str]:
         return None
     except Exception:
         return None
+
+
+async def generate_docstrings_async(
+    client: AsyncOpenAI,
+    semaphore: asyncio.Semaphore,
+    file: Path,
+    fmt: str,
+    force: bool,
+    model: str,
+) -> tuple[Path, Optional[str]]:
+    """Send file source to vLLM and return (file, patched_source) or (file, None) on error."""
+    source = file.read_text()
+    language = get_language(file)
+    action = (
+        "Replace all existing docstrings and add missing ones"
+        if force
+        else "Add docstrings to all functions and classes that are missing them"
+    )
+    prompt = (
+        f"{action} using {fmt} format in the following {language} source code. "
+        f"Return ONLY the complete patched source code with no explanation and no markdown fences.\n\n"
+        f"{source}"
+    )
+    async with semaphore:
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                extra_body={
+                    "reasoning_effort": "none",
+                    "chat_template_kwargs": {"enable_thinking": False},
+                },
+            )
+            return file, response.choices[0].message.content
+        except Exception as e:
+            typer.echo(f"  ⚠️  LLM error for {file.name}: {e}", err=True)
+            return file, None
+
+
+async def process_files_async(
+    files: list[Path],
+    fmt: Optional[str],
+    force: bool,
+    model: str,
+    batch_size: int,
+    base_url: str,
+) -> dict[Path, str]:
+    """Process files in parallel (up to batch_size concurrent LLM calls)."""
+    client = AsyncOpenAI(base_url=base_url, api_key="none")
+    semaphore = asyncio.Semaphore(batch_size)
+    tasks = [
+        generate_docstrings_async(client, semaphore, f, get_format(f, fmt), force, model)
+        for f in files
+    ]
+    results = await asyncio.gather(*tasks)
+    return {path: content for path, content in results if content is not None}

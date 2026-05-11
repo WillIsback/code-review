@@ -6,7 +6,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 import importlib
-from unittest.mock import patch, MagicMock
+import asyncio
+from unittest.mock import patch, MagicMock, AsyncMock
 
 
 class TestGetConfig:
@@ -274,3 +275,79 @@ class TestGetFormat:
     def test_explicit_format_overrides(self):
         import docgen.docgen as m
         assert m.get_format(Path("foo.py"), "tsdoc") == "tsdoc"
+
+
+class TestGenerateDocstrings:
+    def test_returns_patched_source_on_success(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "foo.py"
+            f.write_text("def bar():\n    return 1\n")
+
+            mock_client = MagicMock()
+            mock_client.chat = MagicMock()
+            mock_client.chat.completions = MagicMock()
+            mock_client.chat.completions.create = AsyncMock(return_value=MagicMock(
+                choices=[MagicMock(message=MagicMock(content='def bar():\n    """Returns 1."""\n    return 1\n'))]
+            ))
+
+            import docgen.docgen as m
+            sem = asyncio.Semaphore(4)
+            result_path, result_content = asyncio.run(
+                m.generate_docstrings_async(mock_client, sem, f, "mkdocs", False, "test-model")
+            )
+        assert result_path == f
+        assert '"""Returns 1."""' in result_content
+
+    def test_returns_none_on_llm_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "foo.py"
+            f.write_text("def bar():\n    return 1\n")
+
+            mock_client = MagicMock()
+            mock_client.chat.completions.create = AsyncMock(side_effect=Exception("LLM down"))
+
+            import docgen.docgen as m
+            sem = asyncio.Semaphore(4)
+            result_path, result_content = asyncio.run(
+                m.generate_docstrings_async(mock_client, sem, f, "mkdocs", False, "test-model")
+            )
+        assert result_path == f
+        assert result_content is None
+
+
+class TestProcessFilesAsync:
+    def test_returns_dict_of_patched_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            f1 = Path(d) / "a.py"
+            f2 = Path(d) / "b.py"
+            f1.write_text("def a(): pass")
+            f2.write_text("def b(): pass")
+
+            patched_a = 'def a():\n    """Does a."""\n    pass'
+            patched_b = 'def b():\n    """Does b."""\n    pass'
+
+            async def fake_generate(client, sem, file, fmt, force, model):
+                return (file, patched_a if file.name == "a.py" else patched_b)
+
+            import docgen.docgen as m
+            with patch.object(m, "generate_docstrings_async", side_effect=fake_generate):
+                result = asyncio.run(
+                    m.process_files_async([f1, f2], None, False, "test-model", 4, "http://x/v1")
+                )
+        assert result[f1] == patched_a
+        assert result[f2] == patched_b
+
+    def test_skips_files_where_llm_returns_none(self):
+        with tempfile.TemporaryDirectory() as d:
+            f1 = Path(d) / "a.py"
+            f1.write_text("def a(): pass")
+
+            async def fake_generate(client, sem, file, fmt, force, model):
+                return (file, None)
+
+            import docgen.docgen as m
+            with patch.object(m, "generate_docstrings_async", side_effect=fake_generate):
+                result = asyncio.run(
+                    m.process_files_async([f1], None, False, "test-model", 4, "http://x/v1")
+                )
+        assert result == {}
