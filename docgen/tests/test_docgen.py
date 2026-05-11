@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 
 class TestGetConfig:
     def test_returns_defaults_when_env_not_set(self):
-        with patch.dict(os.environ, {}, clear=True):
+        with patch("dotenv.load_dotenv"), patch.dict(os.environ, {}, clear=True):
             import docgen.docgen as m
             importlib.reload(m)
             cfg = m.get_config()
@@ -22,14 +22,16 @@ class TestGetConfig:
         assert "localhost" in cfg["vllm_base_url"]
 
     def test_reads_vllm_base_url_from_env(self):
-        with patch.dict(os.environ, {"VLLM_BASE_URL": "http://myserver:8000/v1", "BATCH_SIZE": "4"}):
+        with patch("dotenv.load_dotenv"), \
+             patch.dict(os.environ, {"VLLM_BASE_URL": "http://myserver:8000/v1", "BATCH_SIZE": "4"}):
             import docgen.docgen as m
             importlib.reload(m)
             cfg = m.get_config()
         assert cfg["vllm_base_url"] == "http://myserver:8000/v1"
 
     def test_reads_batch_size_from_env(self):
-        with patch.dict(os.environ, {"VLLM_BASE_URL": "http://x:1/v1", "BATCH_SIZE": "8"}):
+        with patch("dotenv.load_dotenv"), \
+             patch.dict(os.environ, {"VLLM_BASE_URL": "http://x:1/v1", "BATCH_SIZE": "8"}):
             import docgen.docgen as m
             importlib.reload(m)
             cfg = m.get_config()

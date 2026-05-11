@@ -111,14 +111,30 @@ members = ["tools/ai-devops-toolkit"]
 
 ## Configuration
 
-Copy `.env.example` to `.env` at the root of the repository (or your project root) and set your vLLM endpoint:
+`docgen` loads configuration in two layers (project overrides global):
+
+### Global config (recommended for the global install)
+
+Create `~/.config/docgen/.env` once — applies to every project on the machine:
+
+```bash
+mkdir -p ~/.config/docgen
+cat > ~/.config/docgen/.env <<EOF
+VLLM_BASE_URL=http://<your-host>:30000/v1
+BATCH_SIZE=4
+EOF
+```
+
+### Project-level config
+
+Create a `.env` at the root of any project to override the global values for that project:
 
 ```
 VLLM_BASE_URL=http://<your-host>:30000/v1
 BATCH_SIZE=4
 ```
 
-`docgen` loads `.env` automatically from the current working directory at startup.
+`docgen` loads the global config first, then the project `.env` on top. Both files are optional — whichever is found wins; if neither is found, `VLLM_BASE_URL` defaults to `http://localhost:30000/v1`.
 
 ## Usage
 

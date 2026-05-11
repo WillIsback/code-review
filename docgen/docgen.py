@@ -17,7 +17,9 @@ import typer
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
-load_dotenv()
+# Load global config first, then project .env overrides it
+load_dotenv(Path.home() / ".config" / "docgen" / ".env")
+load_dotenv(override=True)
 
 VLLM_BASE_URL: str = os.getenv("VLLM_BASE_URL", "http://localhost:30000/v1")
 BATCH_SIZE: int = int(os.getenv("BATCH_SIZE", "4"))
