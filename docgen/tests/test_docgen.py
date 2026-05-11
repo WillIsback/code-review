@@ -248,6 +248,10 @@ class TestNeedsDocstrings:
             import docgen.docgen as m
             assert m.needs_docstrings(f) is False
 
+    def test_returns_false_on_os_error(self):
+        import docgen.docgen as m
+        assert m.needs_docstrings(Path("/nonexistent/path/foo.py")) is False
+
 
 class TestGetFormat:
     def test_py_defaults_to_mkdocs(self):
