@@ -6,7 +6,12 @@ pub fn dirty_files(repo_path: &Path) -> Vec<String> {
     let Ok(repo) = git2::Repository::discover(repo_path) else {
         return vec![];
     };
-    let Ok(statuses) = repo.statuses(None) else {
+    let mut opts = git2::StatusOptions::new();
+    opts.include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .exclude_submodules(true)
+        .include_ignored(false);
+    let Ok(statuses) = repo.statuses(Some(&mut opts)) else {
         return vec![];
     };
     statuses

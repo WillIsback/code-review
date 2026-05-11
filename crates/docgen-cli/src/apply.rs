@@ -26,10 +26,12 @@ pub fn apply_with_git(patches: Vec<PatchResult>, repo_path: &Path) -> Result<(),
         std::fs::write(&patch.path, &patch.content)
             .map_err(|e| git2::Error::from_str(&e.to_string()))?;
         let workdir = repo.workdir().unwrap_or(Path::new("."));
-        let rel = patch.path
+        let abs_path = patch.path.canonicalize()
+            .map_err(|e| git2::Error::from_str(&e.to_string()))?;
+        let rel = abs_path
             .strip_prefix(workdir)
             .map_err(|_| git2::Error::from_str(
-                &format!("patch path {} is not under repo workdir {}", patch.path.display(), workdir.display())
+                &format!("patch path {} is not under repo workdir {}", abs_path.display(), workdir.display())
             ))?;
         index.add_path(rel)?;
     }
@@ -82,6 +84,9 @@ pub fn apply_with_git(patches: Vec<PatchResult>, repo_path: &Path) -> Result<(),
         &merge_tree,
         &[&original_commit, &feature_commit],
     )?;
+
+    // Update working tree to match the merge commit
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
 
     // Delete feature branch
     repo.find_branch(&branch_name, git2::BranchType::Local)?
