@@ -454,6 +454,7 @@ class TestCli:
              patch("docgen.docgen.detect_model", return_value=None):
             result = runner.invoke(app, ["src/"])
         assert result.exit_code == 1
+        assert "model" in result.output.lower()
 
     def test_exits_2_when_no_files_found(self):
         runner, app = self._runner()
@@ -463,6 +464,7 @@ class TestCli:
                  patch("docgen.docgen.detect_model", return_value="test-model"):
                 result = runner.invoke(app, [d])
         assert result.exit_code == 2
+        assert "No Python or TypeScript" in result.output
 
     def test_exits_2_when_all_files_already_documented(self):
         runner, app = self._runner()
