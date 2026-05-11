@@ -25,7 +25,11 @@ docgen src/ --recursive
 To update later:
 
 ```bash
-uv tool upgrade docgen
+# The package name is ai-devops-toolkit, not docgen
+uv tool upgrade ai-devops-toolkit
+
+# Or force a reinstall to pick up the latest commit:
+uv tool install --reinstall git+https://github.com/WillIsback/ai-devops-toolkit.git
 ```
 
 ---
