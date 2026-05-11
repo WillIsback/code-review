@@ -45,12 +45,47 @@ pub fn python_has_missing_docstrings(source: &str, force: bool) -> bool {
     false
 }
 
+/// Returns `true` if TypeScript source has functions/classes/methods missing JSDoc.
+pub fn ts_has_missing_docstrings(source: &str, force: bool) -> bool {
+    let mut parser = Parser::new();
+    let lang: Language = tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into();
+    parser.set_language(&lang).expect("valid TS grammar");
+
+    let tree = match parser.parse(source, None) {
+        Some(t) => t,
+        None => return false,
+    };
+
+    let query_src = r#"
+        [(function_declaration)
+         (method_definition)
+         (class_declaration)] @def
+    "#;
+    let query = Query::new(&lang, query_src).expect("valid query");
+    let mut cursor = QueryCursor::new();
+    let src_bytes = source.as_bytes();
+
+    let mut matches = cursor.matches(&query, tree.root_node(), src_bytes);
+    while let Some(m) = matches.next() {
+        for capture in m.captures {
+            let node = capture.node;
+            let start_byte = node.start_byte();
+            let preceding = &source[..start_byte];
+            let trimmed = preceding.trim_end();
+            let has_jsdoc = trimmed.ends_with("*/");
+            if !has_jsdoc || force {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Dispatch to Python or TS detector based on file extension.
-/// (TS detection added in Task 6 — stub returns false for now)
 pub fn needs_docstrings(file: &Path, source: &str, force: bool) -> bool {
     match file.extension().and_then(|e| e.to_str()) {
         Some("py") => python_has_missing_docstrings(source, force),
-        Some("ts") | Some("tsx") => false, // implemented in Task 6
+        Some("ts") | Some("tsx") => ts_has_missing_docstrings(source, force),
         _ => false,
     }
 }
@@ -84,5 +119,42 @@ mod tests {
             "def foo():\n    \"\"\"Exists.\"\"\"\n    pass\n",
             true
         ));
+    }
+
+    #[test]
+    fn ts_fn_without_jsdoc_detected() {
+        assert!(ts_has_missing_docstrings(
+            "function foo(): void {}\n",
+            false,
+        ));
+    }
+
+    #[test]
+    fn ts_fn_with_jsdoc_not_flagged() {
+        assert!(!ts_has_missing_docstrings(
+            "/** Does something. */\nfunction foo(): void {}\n",
+            false,
+        ));
+    }
+
+    #[test]
+    fn ts_class_without_jsdoc_detected() {
+        assert!(ts_has_missing_docstrings("class Bar {}\n", false));
+    }
+
+    #[test]
+    fn ts_force_flags_documented_fn() {
+        assert!(ts_has_missing_docstrings(
+            "/** Exists. */\nfunction foo(): void {}\n",
+            true,
+        ));
+    }
+
+    #[test]
+    fn needs_docstrings_dispatches_by_extension() {
+        let py_path = std::path::Path::new("src/foo.py");
+        assert!(needs_docstrings(py_path, "def foo():\n    pass\n", false));
+        let ts_path = std::path::Path::new("src/foo.ts");
+        assert!(needs_docstrings(ts_path, "function foo(): void {}\n", false));
     }
 }
