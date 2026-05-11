@@ -30,3 +30,40 @@ class TestGetConfig:
             importlib.reload(m)
             cfg = m.get_config()
         assert cfg["batch_size"] == 8
+
+
+class TestCheckDirtyTree:
+    def test_returns_empty_list_when_clean(self):
+        mock_repo = MagicMock()
+        mock_repo.index.diff.return_value = []
+        mock_repo.untracked_files = []
+        with patch("docgen.docgen.git.Repo", return_value=mock_repo):
+            import docgen.docgen as m
+            result = m.check_dirty_tree(Path("."))
+        assert result == []
+
+    def test_returns_modified_files_when_dirty(self):
+        mock_diff = MagicMock()
+        mock_diff.a_path = "src/foo.py"
+        mock_repo = MagicMock()
+        mock_repo.index.diff.return_value = [mock_diff]
+        mock_repo.untracked_files = ["src/bar.py"]
+        with patch("docgen.docgen.git.Repo", return_value=mock_repo):
+            import docgen.docgen as m
+            result = m.check_dirty_tree(Path("."))
+        assert "src/foo.py" in result
+        assert "src/bar.py" in result
+
+
+class TestCheckVllmReachable:
+    def test_returns_true_when_reachable(self):
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        with patch("docgen.docgen.httpx.get", return_value=mock_response):
+            import docgen.docgen as m
+            assert m.check_vllm_reachable("http://localhost:30000/v1") is True
+
+    def test_returns_false_on_connection_error(self):
+        with patch("docgen.docgen.httpx.get", side_effect=Exception("timeout")):
+            import docgen.docgen as m
+            assert m.check_vllm_reachable("http://localhost:30000/v1") is False

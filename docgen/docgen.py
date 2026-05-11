@@ -33,3 +33,22 @@ def get_config() -> dict:
         "vllm_base_url": VLLM_BASE_URL,
         "batch_size": BATCH_SIZE,
     }
+
+
+def check_dirty_tree(repo_path: Path = Path(".")) -> list[str]:
+    """Return list of modified/untracked files; empty if working tree is clean."""
+    repo = git.Repo(repo_path, search_parent_directories=True)
+    modified = [item.a_path for item in repo.index.diff(None)]
+    return modified + list(repo.untracked_files)
+
+
+def check_vllm_reachable(base_url: str) -> bool:
+    """Return True if the vLLM /v1/models endpoint responds."""
+    try:
+        url = base_url.rstrip("/")
+        if url.endswith("/v1"):
+            url = url[:-3]
+        httpx.get(f"{url}/v1/models", timeout=VLLM_CONNECT_TIMEOUT).raise_for_status()
+        return True
+    except Exception:
+        return False
