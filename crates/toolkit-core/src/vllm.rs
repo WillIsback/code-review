@@ -17,7 +17,7 @@ pub async fn check_reachable(cfg: &Config) -> bool {
         .timeout(std::time::Duration::from_secs(cfg.connect_timeout_secs))
         .build()
         .expect("valid client");
-    client.get(&cfg.models_url()).send().await
+    client.get(cfg.models_url()).send().await
         .map(|r| r.status().is_success())
         .unwrap_or(false)
 }
@@ -29,7 +29,7 @@ pub async fn detect_model(cfg: &Config) -> Result<String, CoreError> {
         .build()
         .expect("valid client");
     let resp: ModelsResponse = client
-        .get(&cfg.models_url())
+        .get(cfg.models_url())
         .send()
         .await
         .map_err(|_| CoreError::VllmUnreachable { url: cfg.models_url() })?
