@@ -10,6 +10,14 @@ use toolkit_core::{config::Config, git, vllm};
 
 #[tokio::main]
 async fn main() {
+    // Load global config first, then project .env overrides it
+    if let Some(home) = std::env::var_os("HOME") {
+        let _ = dotenvy::from_path(
+            std::path::Path::new(&home).join(".config/docgen/.env")
+        );
+    }
+    let _ = dotenvy::dotenv();
+
     let args = Cli::parse();
     let cfg = Config::from_env();
 
@@ -32,7 +40,7 @@ async fn main() {
     }
 
     // 3. Model detection
-    let model = match vllm::detect_model(&cfg).await {
+    let model = match vllm::resolve_model(&cfg).await {
         Ok(m) => {
             println!("Auto-detected model: {m}");
             m

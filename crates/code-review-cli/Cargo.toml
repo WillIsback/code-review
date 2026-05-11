@@ -14,3 +14,4 @@ reqwest      = { workspace = true }
 serde_json   = { workspace = true }
 octocrab     = "0.41"
 async-openai = "0.27"
+dotenvy      = { workspace = true }

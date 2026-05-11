@@ -32,7 +32,6 @@ pub async fn process_files(
             let client = Arc::clone(&client);
             let model = model.to_string();
             let fmt = fmt.map(String::from);
-            let force = force;
             tokio::spawn(async move {
                 let _permit = sem.acquire().await.unwrap();
                 let source = match tokio::fs::read_to_string(&path).await {

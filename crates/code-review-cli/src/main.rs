@@ -5,6 +5,8 @@ use toolkit_core::{config::Config, vllm};
 
 #[tokio::main]
 async fn main() {
+    let _ = dotenvy::dotenv();
+
     println!("{}", "=".repeat(60));
     println!("AI Code Reviewer - Self-Hosted Runner");
     println!("{}", "=".repeat(60));
@@ -13,7 +15,7 @@ async fn main() {
     let gh = github::GithubConfig::from_env();
 
     // Detect model
-    let model = match vllm::detect_model(&cfg).await {
+    let model = match vllm::resolve_model(&cfg).await {
         Ok(m) => {
             println!("Auto-detected model: {m}");
             m
