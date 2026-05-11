@@ -5,7 +5,12 @@ use std::path::Path;
 pub fn apply_with_git(patches: Vec<PatchResult>, repo_path: &Path) -> Result<(), git2::Error> {
     let repo = Repository::discover(repo_path)?;
     let head = repo.head()?;
-    let original_branch = head.shorthand().unwrap_or("main").to_string();
+    let original_branch = head.shorthand().unwrap_or("").to_string();
+    if original_branch.is_empty() {
+        return Err(git2::Error::from_str(
+            "docgen requires a named branch (HEAD is detached)"
+        ));
+    }
 
     let now = chrono::Local::now();
     let branch_name = format!("docgen/{}", now.format("%Y%m%d-%H%M%S"));
@@ -21,7 +26,11 @@ pub fn apply_with_git(patches: Vec<PatchResult>, repo_path: &Path) -> Result<(),
         std::fs::write(&patch.path, &patch.content)
             .map_err(|e| git2::Error::from_str(&e.to_string()))?;
         let workdir = repo.workdir().unwrap_or(Path::new("."));
-        let rel = patch.path.strip_prefix(workdir).unwrap_or(&patch.path);
+        let rel = patch.path
+            .strip_prefix(workdir)
+            .map_err(|_| git2::Error::from_str(
+                &format!("patch path {} is not under repo workdir {}", patch.path.display(), workdir.display())
+            ))?;
         index.add_path(rel)?;
     }
     index.write()?;
@@ -58,6 +67,11 @@ pub fn apply_with_git(patches: Vec<PatchResult>, repo_path: &Path) -> Result<(),
     let base_tree = ancestor.tree()?;
     let mut merge_index = repo.merge_trees(&base_tree, &our_tree, &their_tree, None)?;
     let merge_tree_id = merge_index.write_tree_to(&repo)?;
+    if merge_index.has_conflicts() {
+        return Err(git2::Error::from_str(
+            "merge conflict detected — docgen branch not merged; manual resolution required"
+        ));
+    }
     let merge_tree = repo.find_tree(merge_tree_id)?;
 
     repo.commit(
