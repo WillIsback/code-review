@@ -94,6 +94,24 @@ def python_has_missing_docstrings(source: str, force: bool = False) -> bool:
     return False
 
 
+def ts_has_missing_docstrings(source: str, force: bool = False) -> bool:
+    """Return True if source contains functions/classes that need JSDoc."""
+    lines = source.splitlines()
+    declaration_re = re.compile(
+        r'^(?:export\s+)?(?:async\s+)?(?:function\s+\w+|class\s+\w+)'
+    )
+    for i, line in enumerate(lines):
+        if declaration_re.match(line.strip()):
+            prev_non_empty = next(
+                (lines[j].strip() for j in range(i - 1, -1, -1) if lines[j].strip()),
+                ""
+            )
+            has_jsdoc = prev_non_empty.endswith("*/")
+            if not has_jsdoc or force:
+                return True
+    return False
+
+
 def detect_model(base_url: str) -> Optional[str]:
     """Query /v1/models and return the first available model ID."""
     try:

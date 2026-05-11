@@ -187,3 +187,40 @@ class TestPythonHasMissingDocstrings:
         source = "x = 1\ny = 2\n"
         import docgen.docgen as m
         assert m.python_has_missing_docstrings(source) is False
+
+
+class TestTsHasMissingDocstrings:
+    def test_function_without_jsdoc_returns_true(self):
+        source = "function greet(name: string): string {\n  return name;\n}\n"
+        import docgen.docgen as m
+        assert m.ts_has_missing_docstrings(source) is True
+
+    def test_function_with_jsdoc_returns_false(self):
+        source = "/**\n * Greets a user.\n */\nfunction greet(name: string): string {\n  return name;\n}\n"
+        import docgen.docgen as m
+        assert m.ts_has_missing_docstrings(source) is False
+
+    def test_class_without_jsdoc_returns_true(self):
+        source = "class MyService {\n  run() {}\n}\n"
+        import docgen.docgen as m
+        assert m.ts_has_missing_docstrings(source) is True
+
+    def test_class_with_jsdoc_returns_false(self):
+        source = "/**\n * MyService class.\n */\nclass MyService {\n  run() {}\n}\n"
+        import docgen.docgen as m
+        assert m.ts_has_missing_docstrings(source) is False
+
+    def test_exported_function_without_jsdoc_returns_true(self):
+        source = "export function add(a: number, b: number): number {\n  return a + b;\n}\n"
+        import docgen.docgen as m
+        assert m.ts_has_missing_docstrings(source) is True
+
+    def test_force_returns_true_even_when_documented(self):
+        source = "/**\n * Greets.\n */\nfunction greet() {}\n"
+        import docgen.docgen as m
+        assert m.ts_has_missing_docstrings(source, force=True) is True
+
+    def test_no_declarations_returns_false(self):
+        source = "const x = 1;\nconst y = 2;\n"
+        import docgen.docgen as m
+        assert m.ts_has_missing_docstrings(source) is False
