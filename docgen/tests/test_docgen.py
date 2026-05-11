@@ -1,6 +1,7 @@
 import sys
 import os
 import tempfile
+import pytest
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -374,3 +375,49 @@ class TestProcessFilesAsync:
                     m.process_files_async([f1], None, False, "test-model", 4, "http://x/v1")
                 )
         assert result == {}
+
+
+class TestApplyWithGit:
+    def test_creates_branch_writes_files_merges_and_deletes(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "foo.py"
+            patched = {f: 'def foo():\n    """Docs."""\n    pass\n'}
+
+            mock_repo = MagicMock()
+            mock_repo.active_branch.name = "main"
+
+            with patch("docgen.docgen.git.Repo", return_value=mock_repo):
+                import docgen.docgen as m
+                m.apply_with_git(patched, Path(d))
+
+            # branch created
+            branch_call = mock_repo.git.checkout.call_args_list[0]
+            assert branch_call.args[0] == "-b"
+            assert branch_call.args[1].startswith("docgen/")
+            # commit made
+            mock_repo.git.commit.assert_called_once()
+            # merged back
+            mock_repo.git.merge.assert_called_once()
+            # branch deleted
+            mock_repo.git.branch.assert_called_with("-d", branch_call.args[1])
+            # file written
+            assert f.read_text() == patched[f]
+
+    def test_leaves_branch_on_merge_failure(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "foo.py"
+            f.write_text("")
+            patched = {f: "patched"}
+
+            mock_repo = MagicMock()
+            mock_repo.active_branch.name = "feature/x"
+            mock_repo.git.merge.side_effect = Exception("conflict")
+
+            with patch("docgen.docgen.git.Repo", return_value=mock_repo):
+                import docgen.docgen as m
+                with pytest.raises(Exception, match="conflict"):
+                    m.apply_with_git(patched, Path(d))
+
+            # checkout back to original branch called even on failure
+            checkout_calls = [c.args for c in mock_repo.git.checkout.call_args_list]
+            assert any("feature/x" in str(c) for c in checkout_calls)
