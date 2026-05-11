@@ -52,3 +52,21 @@ def check_vllm_reachable(base_url: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def detect_model(base_url: str) -> Optional[str]:
+    """Query /v1/models and return the first available model ID."""
+    try:
+        url = base_url.rstrip("/")
+        if url.endswith("/v1"):
+            url = url[:-3]
+        response = httpx.get(f"{url}/v1/models", timeout=VLLM_CONNECT_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+        if data.get("data"):
+            model_id = data["data"][0]["id"]
+            typer.echo(f"📦 Auto-detected model: {model_id}")
+            return model_id
+        return None
+    except Exception:
+        return None

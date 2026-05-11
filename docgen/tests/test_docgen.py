@@ -67,3 +67,26 @@ class TestCheckVllmReachable:
         with patch("docgen.docgen.httpx.get", side_effect=Exception("timeout")):
             import docgen.docgen as m
             assert m.check_vllm_reachable("http://localhost:30000/v1") is False
+
+
+class TestDetectModel:
+    def test_returns_first_model_id(self):
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"data": [{"id": "Qwen/Qwen3-30B-A3B"}]}
+        with patch("docgen.docgen.httpx.get", return_value=mock_response):
+            import docgen.docgen as m
+            assert m.detect_model("http://localhost:30000/v1") == "Qwen/Qwen3-30B-A3B"
+
+    def test_returns_none_when_no_models(self):
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"data": []}
+        with patch("docgen.docgen.httpx.get", return_value=mock_response):
+            import docgen.docgen as m
+            assert m.detect_model("http://localhost:30000/v1") is None
+
+    def test_returns_none_on_error(self):
+        with patch("docgen.docgen.httpx.get", side_effect=Exception("conn refused")):
+            import docgen.docgen as m
+            assert m.detect_model("http://localhost:30000/v1") is None
