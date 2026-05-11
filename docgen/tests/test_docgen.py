@@ -90,3 +90,54 @@ class TestDetectModel:
         with patch("docgen.docgen.httpx.get", side_effect=Exception("conn refused")):
             import docgen.docgen as m
             assert m.detect_model("http://localhost:30000/v1") is None
+
+
+import tempfile
+
+
+class TestResolveFiles:
+    def test_single_python_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "foo.py"
+            f.write_text("x = 1")
+            import docgen.docgen as m
+            assert m.resolve_files(f) == [f]
+
+    def test_single_non_matching_file_returns_empty(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "README.md"
+            f.write_text("# docs")
+            import docgen.docgen as m
+            assert m.resolve_files(f) == []
+
+    def test_flat_folder_no_recursion(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "a.py").write_text("")
+            (root / "b.ts").write_text("")
+            sub = root / "sub"
+            sub.mkdir()
+            (sub / "c.py").write_text("")
+            import docgen.docgen as m
+            result = m.resolve_files(root, recursive=False)
+            names = {f.name for f in result}
+            assert names == {"a.py", "b.ts"}
+
+    def test_recursive_folder(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "a.py").write_text("")
+            sub = root / "sub"
+            sub.mkdir()
+            (sub / "c.py").write_text("")
+            import docgen.docgen as m
+            result = m.resolve_files(root, recursive=True)
+            names = {f.name for f in result}
+            assert names == {"a.py", "c.py"}
+
+    def test_tsx_files_included(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "Button.tsx"
+            f.write_text("")
+            import docgen.docgen as m
+            assert m.resolve_files(f) == [f]

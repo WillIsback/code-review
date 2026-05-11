@@ -54,6 +54,15 @@ def check_vllm_reachable(base_url: str) -> bool:
         return False
 
 
+def resolve_files(target: Path, recursive: bool = False) -> list[Path]:
+    """Return .py/.ts/.tsx files under target. Flat by default, recursive if flagged."""
+    extensions = {".py", ".ts", ".tsx"}
+    if target.is_file():
+        return [target] if target.suffix in extensions else []
+    pattern = "**/*" if recursive else "*"
+    return sorted(f for f in target.glob(pattern) if f.is_file() and f.suffix in extensions)
+
+
 def detect_model(base_url: str) -> Optional[str]:
     """Query /v1/models and return the first available model ID."""
     try:
