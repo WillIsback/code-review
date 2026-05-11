@@ -11,7 +11,7 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TypedDict
 
 import git
 import httpx
@@ -28,7 +28,13 @@ VLLM_CONNECT_TIMEOUT: int = 5
 app = typer.Typer(help="Generate docstrings using a local vLLM instance.")
 
 
-def get_config() -> dict:
+class Config(TypedDict):
+    vllm_base_url: str
+    batch_size: int
+
+
+def get_config() -> Config:
+    """Return runtime configuration from environment variables."""
     return {
         "vllm_base_url": VLLM_BASE_URL,
         "batch_size": BATCH_SIZE,
@@ -38,17 +44,23 @@ def get_config() -> dict:
 def check_dirty_tree(repo_path: Path = Path(".")) -> list[str]:
     """Return list of modified/untracked files; empty if working tree is clean."""
     repo = git.Repo(repo_path, search_parent_directories=True)
-    modified = [item.a_path for item in repo.index.diff(None)]
-    return modified + list(repo.untracked_files)
+    staged = [item.a_path for item in repo.index.diff(repo.head.commit)]
+    unstaged = [item.a_path for item in repo.index.diff(None)]
+    return staged + unstaged + list(repo.untracked_files)
+
+
+def _models_url(base_url: str) -> str:
+    """Normalise base_url and return the /v1/models endpoint URL."""
+    url = base_url.rstrip("/")
+    if url.endswith("/v1"):
+        url = url[:-3]
+    return f"{url}/v1/models"
 
 
 def check_vllm_reachable(base_url: str) -> bool:
     """Return True if the vLLM /v1/models endpoint responds."""
     try:
-        url = base_url.rstrip("/")
-        if url.endswith("/v1"):
-            url = url[:-3]
-        httpx.get(f"{url}/v1/models", timeout=VLLM_CONNECT_TIMEOUT).raise_for_status()
+        httpx.get(_models_url(base_url), timeout=VLLM_CONNECT_TIMEOUT).raise_for_status()
         return True
     except Exception:
         return False
@@ -66,10 +78,7 @@ def resolve_files(target: Path, recursive: bool = False) -> list[Path]:
 def detect_model(base_url: str) -> Optional[str]:
     """Query /v1/models and return the first available model ID."""
     try:
-        url = base_url.rstrip("/")
-        if url.endswith("/v1"):
-            url = url[:-3]
-        response = httpx.get(f"{url}/v1/models", timeout=VLLM_CONNECT_TIMEOUT)
+        response = httpx.get(_models_url(base_url), timeout=VLLM_CONNECT_TIMEOUT)
         response.raise_for_status()
         data = response.json()
         if data.get("data"):

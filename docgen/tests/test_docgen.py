@@ -1,5 +1,6 @@
 import sys
 import os
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -54,6 +55,17 @@ class TestCheckDirtyTree:
         assert "src/foo.py" in result
         assert "src/bar.py" in result
 
+    def test_returns_staged_files_when_staged(self):
+        mock_staged = MagicMock()
+        mock_staged.a_path = "src/staged.py"
+        mock_repo = MagicMock()
+        mock_repo.index.diff.side_effect = lambda arg: [mock_staged] if arg == mock_repo.head.commit else []
+        mock_repo.untracked_files = []
+        with patch("docgen.docgen.git.Repo", return_value=mock_repo):
+            import docgen.docgen as m
+            result = m.check_dirty_tree(Path("."))
+        assert "src/staged.py" in result
+
 
 class TestCheckVllmReachable:
     def test_returns_true_when_reachable(self):
@@ -90,9 +102,6 @@ class TestDetectModel:
         with patch("docgen.docgen.httpx.get", side_effect=Exception("conn refused")):
             import docgen.docgen as m
             assert m.detect_model("http://localhost:30000/v1") is None
-
-
-import tempfile
 
 
 class TestResolveFiles:
