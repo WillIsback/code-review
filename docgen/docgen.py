@@ -26,3 +26,10 @@ BATCH_SIZE: int = int(os.getenv("BATCH_SIZE", "4"))
 VLLM_CONNECT_TIMEOUT: int = 5
 
 app = typer.Typer(help="Generate docstrings using a local vLLM instance.")
+
+
+def get_config() -> dict:
+    return {
+        "vllm_base_url": VLLM_BASE_URL,
+        "batch_size": BATCH_SIZE,
+    }
