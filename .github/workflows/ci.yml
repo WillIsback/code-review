@@ -23,7 +23,7 @@ jobs:
 
   ai-code-review:
     name: AI Code Review
-    runs-on: [self-hosted, dgx-spark]
+    runs-on: self-hosted
     needs: build-and-test
     permissions:
       pull-requests: write
