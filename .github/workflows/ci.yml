@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build workspace
+        run: cargo build --workspace
+
+      - name: Test workspace
+        run: cargo test --workspace
+
+  ai-code-review:
+    name: AI Code Review
+    runs-on: [self-hosted, dgx-spark]
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run AI Code Review
+        uses: ./code-review
+        with:
+          vllm-url: ${{ secrets.VLLM_URL }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
