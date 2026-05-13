@@ -3,9 +3,7 @@ name            = "ai-devops-toolkit"
 version         = "0.1.0"
 description     = "AI DevOps Toolkit"
 requires-python = ">=3.11"
-dependencies    = [
-    "pytest>=8.0",
-]
+dependencies    = []
 
 [build-system]
 requires      = ["maturin>=1.5,<2.0"]
@@ -14,9 +12,6 @@ build-backend = "maturin"
 [tool.maturin]
 bindings      = "bin"
 manifest-path = "crates/docgen-cli/Cargo.toml"
-
-[tool.pytest.ini_options]
-testpaths = ["code-review/tests"]
 
 [tool.uv]
 dev-dependencies = [

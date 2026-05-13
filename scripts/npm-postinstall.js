@@ -31,6 +31,7 @@ function download(url, dest, redirects) {
       if (res.statusCode === 301 || res.statusCode === 302) {
         file.close();
         fs.unlink(dest, function() {});
+        res.resume(); // drain the redirect response body
         resolve(download(res.headers.location, dest, redirects + 1));
         return;
       }
@@ -76,4 +77,7 @@ async function main() {
   }
 }
 
-main();
+main().catch(function(err) {
+  console.warn('[docgen] postinstall failed: ' + err.message);
+  // Non-fatal: exit 0 so pnpm/npm install succeeds
+});
