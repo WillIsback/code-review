@@ -1,6 +1,6 @@
 # docgen
 
-CLI tool that generates and inserts docstrings into Python and TypeScript source files using a locally-hosted [vLLM](https://github.com/vllm-project/vllm) instance. Designed for use during development or at build time via `uv run` or `pnpm run`.
+CLI tool that generates and inserts docstrings into TypeScript and Python source files using a locally-hosted [vLLM](https://github.com/vllm-project/vllm) instance. Designed for use during development or at build time.
 
 The engine is written in **Rust**: source files are parsed with [tree-sitter](https://tree-sitter.github.io/) AST queries (no regex), LLM calls run in parallel with a tokio semaphore, and all file edits are isolated in a short-lived `docgen/<timestamp>` git branch that is merged back and deleted — keeping your working branch clean.
 
@@ -8,76 +8,35 @@ The engine is written in **Rust**: source files are parsed with [tree-sitter](ht
 
 ## Installation
 
-### Global install (use from anywhere)
+### npm / pnpm project
 
-Install `docgen` as a global tool with `uv`. Maturin builds the Rust binary and installs it into the tool environment:
-
-```bash
-uv tool install git+https://github.com/WillIsback/ai-devops-toolkit.git
-```
-
-Then run from any directory:
+On `npm install` / `pnpm install` a postinstall script downloads the pre-compiled binary from GitHub Releases for your platform automatically.
 
 ```bash
-docgen src/ --recursive
-```
-
-To update later:
-
-```bash
-uv tool upgrade ai-devops-toolkit
-
-# Or force a reinstall to pick up the latest commit:
-uv tool install --reinstall git+https://github.com/WillIsback/ai-devops-toolkit.git
-```
-
----
-
-### Local install — Python project
-
-```bash
-uv add --dev git+https://github.com/WillIsback/ai-devops-toolkit.git
-uv run docgen src/
-```
-
----
-
-### Local install — TypeScript / Node project
-
-On `npm install` / `pnpm install` a postinstall script downloads the pre-compiled binary from GitHub Releases automatically.
-
-```bash
-npm install WillIsback/ai-devops-toolkit
+pnpm add -D WillIsback/ai-devops-toolkit
 # or
-pnpm install WillIsback/ai-devops-toolkit
+npm install --save-dev WillIsback/ai-devops-toolkit
 ```
 
-Then run:
+Then run via `pnpm exec` / `npx`:
 
 ```bash
-pnpm run docgen -- src/
-npm run docgen -- src/
+pnpm exec docgen src/
+npx docgen src/
 ```
 
----
-
-### Local install — Python + TypeScript monorepo
-
-Clone or add the toolkit as a submodule, then wire both entry points:
-
-```bash
-git clone https://github.com/WillIsback/ai-devops-toolkit.git tools/ai-devops-toolkit
-cd tools/ai-devops-toolkit && uv sync
-```
-
-In your root `package.json`:
+Or add a convenience script to your `package.json`:
 
 ```json
 {
   "scripts": {
-    "docgen": "uv run --project tools/ai-devops-toolkit docgen"
+    "docgen": "docgen"
   }
 }
+```
+
+```bash
+pnpm run docgen -- src/
 ```
 
 ---
@@ -121,22 +80,19 @@ BATCH_SIZE=4
 
 ```bash
 # Single file
-uv run docgen path/to/file.py
+pnpm exec docgen path/to/file.ts
 
 # Flat folder (top-level files only)
-uv run docgen src/
+pnpm exec docgen src/
 
 # Recurse into subdirectories
-uv run docgen src/ --recursive
+pnpm exec docgen src/ --recursive
 
 # Regenerate existing docstrings
-uv run docgen src/ --force
+pnpm exec docgen src/ --force
 
 # Explicit format override
-uv run docgen src/ --format tsdoc
-
-# Via pnpm
-pnpm run docgen -- src/
+pnpm exec docgen src/ --format tsdoc
 ```
 
 ## Options
@@ -187,7 +143,7 @@ crates/
     │   ├── process.rs            # Parallel LLM calls
     │   └── apply.rs              # Git branch/merge workflow
     └── Cargo.toml
-pyproject.toml                    # maturin build — uv run docgen → Rust binary
-package.json                      # pnpm scripts + npm postinstall binary download
+package.json                      # bin entry + npm postinstall binary download
+scripts/npm-postinstall.js        # Downloads platform binary from GitHub Releases
 .env.example                      # VLLM_BASE_URL, BATCH_SIZE
 ```
