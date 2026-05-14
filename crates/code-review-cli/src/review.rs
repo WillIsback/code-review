@@ -4,7 +4,10 @@ use toolkit_core::vllm::{self, ChatMessage};
 /// Construct the user prompt for a diff chunk review.
 fn chunk_user_prompt(chunk: &str) -> String {
     format!(
-        "Review this diff chunk. List only:\n- CODE: <file>:<line> - <issue>\n- SEC: <file>:<line> - <issue>\nNo headings, no prose, bullets only.\n\n```diff\n{chunk}\n```"
+        "Review this diff chunk. List findings only as bullets:\n\
+         - CODE: `file:line` — <issue> [Critical|High|Medium|Low]\n\
+         - SEC: `file:line` — <issue> [Critical|High|Medium|Low]\n\
+         No headings, no prose, bullets only.\n\n```diff\n{chunk}\n```"
     )
 }
 
@@ -35,18 +38,37 @@ pub fn split_diff_into_chunks(diff: &str, max_words: usize) -> Vec<String> {
 }
 
 const SINGLE_ROUND_SYSTEM_PROMPT: &str =
-    "You are a senior code reviewer. Be concise and practical.";
+    "You are a senior software engineer performing a pull request code review. \
+     Be precise, actionable, and output only the requested format. No preamble, no conclusion.";
 
 const SINGLE_ROUND_USER_TEMPLATE: &str = concat!(
-    "Review this diff and produce exactly two sections:\n",
-    "## Code Quality Issues\n",
-    "A markdown table with columns: #, Location, Issue, Severity. ",
-    "Severity values: Critical, High, Medium, Low. Sort Critical first.\n\n",
-    "## Security Issues\n",
-    "A markdown table with columns: #, Location, Issue, Risk Level. ",
-    "Risk Level values: Critical, High, Medium, Low. Sort Critical first.\n\n",
-    "If a section has no findings write 'No issues found.' under the heading. ",
-    "Output only the two sections. No preamble, no conclusion.\n\n```diff\n"
+    "Review this diff and output exactly this structure:\n\n",
+    "---\n",
+    "findings:\n",
+    "  critical: <count>\n",
+    "  high: <count>\n",
+    "  medium: <count>\n",
+    "  low: <count>\n",
+    "top_files:\n",
+    "  - <up to 3 files with most findings>\n",
+    "risk_score: <critical|high|medium|low|none>\n",
+    "---\n\n",
+    "## 🔍 AI Code Review\n\n",
+    "### 🛠 Code Quality Issues\n\n",
+    "| # | Location | Issue | Severity |\n",
+    "|---|----------|-------|----------|\n",
+    "| 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "### 🔒 Security Issues\n\n",
+    "| # | Location | Issue | Risk Level |\n",
+    "|---|----------|-------|------------|\n",
+    "| 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "Rules:\n",
+    "- Sort rows: Critical first, then High, Medium, Low\n",
+    "- If a section has no findings, write: | — | — | No issues found. | — |\n",
+    "- Location always in backticks\n",
+    "- top_files: files with most findings, max 3\n",
+    "- risk_score: highest severity present; none if no findings\n\n",
+    "Diff to review:\n```diff\n"
 );
 
 /// Review a diff using the appropriate strategy:
@@ -97,7 +119,7 @@ async fn multi_round_review(diff: &str, model: &str, cfg: &Config) -> Option<Str
         let messages = vec![
             ChatMessage {
                 role: "system",
-                content: "You are a code reviewer. Be brief, practical, and output final answer only.".to_string(),
+                content: SINGLE_ROUND_SYSTEM_PROMPT.to_string(),
             },
             ChatMessage {
                 role: "user",
@@ -135,23 +157,9 @@ async fn multi_round_review(diff: &str, model: &str, cfg: &Config) -> Option<Str
     }
 }
 
-const SUMMARIZE_SYSTEM_PROMPT: &str = concat!(
-    "You are a senior code reviewer. Given a list of raw review bullets ",
-    "collected from multiple diff chunks, produce a single concise review with exactly ",
-    "two sections:\n",
-    "## Code Quality Issues\n",
-    "A markdown table with columns: #, Location, Issue, Severity. ",
-    "Severity values: Critical, High, Medium, Low. ",
-    "Sort rows Critical first, then High, Medium, Low. ",
-    "Deduplicate similar findings.\n\n",
-    "## Security Issues\n",
-    "A markdown table with columns: #, Location, Issue, Risk Level. ",
-    "Risk Level values: Critical, High, Medium, Low. ",
-    "Sort rows Critical first, then High, Medium, Low. ",
-    "Deduplicate similar findings.\n\n",
-    "If a section has no findings, write 'No issues found.' under the heading. ",
-    "Output only the two sections. No preamble, no conclusion."
-);
+const SUMMARIZE_SYSTEM_PROMPT: &str =
+    "You are a senior software engineer performing a pull request code review. \
+     Be precise, actionable, and output only the requested format. No preamble, no conclusion.";
 
 /// Feed all chunk bullet outputs into an LLM call and return the
 /// structured two-section Markdown summary.
@@ -171,7 +179,36 @@ pub async fn summarize_review(
         },
         ChatMessage {
             role: "user",
-            content: format!("Here are the raw review bullets:\n\n{combined}"),
+            content: format!(
+                "Review these findings and output exactly this structure:\n\n\
+                 ---\n\
+                 findings:\n\
+                   critical: <count>\n\
+                   high: <count>\n\
+                   medium: <count>\n\
+                   low: <count>\n\
+                 top_files:\n\
+                   - <up to 3 files with most findings>\n\
+                 risk_score: <critical|high|medium|low|none>\n\
+                 ---\n\n\
+                 ## 🔍 AI Code Review\n\n\
+                 ### 🛠 Code Quality Issues\n\n\
+                 | # | Location | Issue | Severity |\n\
+                 |---|----------|-------|----------|\n\
+                 | 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n\
+                 ### 🔒 Security Issues\n\n\
+                 | # | Location | Issue | Risk Level |\n\
+                 |---|----------|-------|------------|\n\
+                 | 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n\
+                 Rules:\n\
+                 - Sort rows: Critical first, then High, Medium, Low\n\
+                 - Deduplicate similar findings across chunks\n\
+                 - If a section has no findings, write: | — | — | No issues found. | — |\n\
+                 - Location always in backticks\n\
+                 - top_files: files with most findings, max 3\n\
+                 - risk_score: highest severity present; none if no findings\n\n\
+                 Findings collected from all diff chunks:\n\n{combined}",
+            ),
         },
     ];
     match vllm::chat_complete(&messages, model, 2048, 0.2, cfg).await {
