@@ -6,8 +6,49 @@ on:
       - 'v[0-9]+\.[0-9]+\.[0-9]+'
 
 jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            echo "body=Initial release" >> "$GITHUB_OUTPUT"
+          else
+            NOTES=$(git log --pretty=format:"- %s" "${PREV_TAG}..HEAD" --no-merges)
+            # Use a delimiter for multiline output
+            {
+              echo "body<<RELEASE_EOF"
+              echo "## What's Changed"
+              echo ""
+              echo "$NOTES"
+              echo ""
+              echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${{ github.ref_name }}"
+              echo "RELEASE_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
+        with:
+          name: ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   release-linux:
     name: Build & Release Linux (${{ matrix.platform }})
+    needs: create-release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -70,6 +111,7 @@ jobs:
 
   release-macos:
     name: Build & Release macOS (${{ matrix.platform }})
+    needs: create-release
     runs-on: macos-latest
     permissions:
       contents: write
@@ -111,6 +153,7 @@ jobs:
 
   release-windows:
     name: Build & Release Windows
+    needs: create-release
     runs-on: windows-latest
     permissions:
       contents: write
