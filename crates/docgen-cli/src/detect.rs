@@ -72,7 +72,8 @@ pub fn ts_has_missing_docstrings(source: &str, force: bool) -> bool {
             let start_byte = node.start_byte();
             let preceding = &source[..start_byte];
             let trimmed = preceding.trim_end();
-            let has_jsdoc = trimmed.ends_with("*/");
+            let has_jsdoc = trimmed.ends_with("*/")
+                && preceding.contains("/**");
             if !has_jsdoc || force {
                 return true;
             }

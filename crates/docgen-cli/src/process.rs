@@ -18,6 +18,7 @@ pub async fn process_files(
 ) -> Vec<PatchResult> {
     use futures::future::join_all;
     let semaphore = Arc::new(Semaphore::new(cfg.batch_size));
+    let client = Arc::new(cfg.http_client());
     let cfg = Arc::new(cfg.clone());
 
     let tasks: Vec<_> = files
@@ -25,6 +26,7 @@ pub async fn process_files(
         .map(|path| {
             let sem = Arc::clone(&semaphore);
             let cfg = Arc::clone(&cfg);
+            let client = Arc::clone(&client);
             let model = model.to_string();
             let fmt = fmt.map(String::from);
             tokio::spawn(async move {
@@ -55,7 +57,7 @@ pub async fn process_files(
                      Return ONLY the complete patched source code with no explanation and no markdown fences.\n\n{source}"
                 );
                 let messages = [ChatMessage { role: "user", content: prompt }];
-                match chat_complete(&messages, &model, 4096, 0.2, &cfg).await {
+                match chat_complete(&messages, &model, 4096, 0.2, &client, &cfg).await {
                     Ok(content) => Some(PatchResult { path, content }),
                     Err(e) => {
                         eprintln!("  warning: LLM error for {}: {e}", path.display());

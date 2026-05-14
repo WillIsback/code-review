@@ -34,8 +34,8 @@ fn should_skip_file(filename: &str) -> bool {
         || filename.ends_with(".lock")
         || filename.ends_with(".lockb")
         || filename.ends_with("-lock.json")
-        || filename.ends_with("lock.yaml")
-        || filename.ends_with("lock.yml")
+        || basename == "lock.yaml"
+        || basename == "lock.yml"
     {
         return true;
     }

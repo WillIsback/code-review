@@ -90,18 +90,22 @@ jobs:
           toolchain: "1.91.0"
           targets: ${{ matrix.target }}
 
-      - name: Build docgen
+      - name: Build binaries
         env:
           OPENSSL_VENDORED: "1"
-        run: cargo build --release --bin docgen --target ${{ matrix.target }}
+        run: cargo build --release --bin code-review-cli --bin docgen --target ${{ matrix.target }}
 
-      - name: Rename binary
-        run: cp target/${{ matrix.target }}/release/docgen docgen-${{ matrix.platform }}
+      - name: Rename binaries
+        run: |
+          cp target/${{ matrix.target }}/release/code-review-cli code-review-cli-${{ matrix.platform }}
+          cp target/${{ matrix.target }}/release/docgen docgen-${{ matrix.platform }}
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda  # v2.2.1
         with:
-          files: docgen-${{ matrix.platform }}
+          files: |
+            code-review-cli-${{ matrix.platform }}
+            docgen-${{ matrix.platform }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -119,17 +123,21 @@ jobs:
         with:
           toolchain: "1.91.0"
 
-      - name: Build docgen
+      - name: Build binaries
         env:
           RUSTFLAGS: "-C link-arg=advapi32.lib"
-        run: cargo build --release --bin docgen
+        run: cargo build --release --bin code-review-cli --bin docgen
 
-      - name: Rename binary
-        run: cp target/release/docgen.exe docgen-windows-amd64.exe
+      - name: Rename binaries
+        run: |
+          cp target/release/code-review-cli.exe code-review-cli-windows-amd64.exe
+          cp target/release/docgen.exe docgen-windows-amd64.exe
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda  # v2.2.1
         with:
-          files: docgen-windows-amd64.exe
+          files: |
+            code-review-cli-windows-amd64.exe
+            docgen-windows-amd64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

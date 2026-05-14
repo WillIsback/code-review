@@ -74,7 +74,12 @@ const SINGLE_ROUND_USER_TEMPLATE: &str = concat!(
 /// Review a diff using the appropriate strategy:
 /// - 1 file  → single round (one direct `chat_complete` call)
 /// - N files → two rounds (per-chunk bullets + reasoning summarization)
-pub async fn review_diff(diff: &str, model: &str, cfg: &Config) -> Option<String> {
+pub async fn review_diff(
+    diff: &str,
+    model: &str,
+    client: &reqwest::Client,
+    cfg: &Config,
+) -> Option<String> {
     if diff.trim().is_empty() {
         return None;
     }
@@ -84,13 +89,18 @@ pub async fn review_diff(diff: &str, model: &str, cfg: &Config) -> Option<String
         if file_count <= 1 { "single-round" } else { "two-round" });
 
     if file_count <= 1 {
-        single_round_review(diff, model, cfg).await
+        single_round_review(diff, model, client, cfg).await
     } else {
-        multi_round_review(diff, model, cfg).await
+        multi_round_review(diff, model, client, cfg).await
     }
 }
 
-async fn single_round_review(diff: &str, model: &str, cfg: &Config) -> Option<String> {
+async fn single_round_review(
+    diff: &str,
+    model: &str,
+    client: &reqwest::Client,
+    cfg: &Config,
+) -> Option<String> {
     let messages = vec![
         ChatMessage {
             role: "system",
@@ -101,7 +111,7 @@ async fn single_round_review(diff: &str, model: &str, cfg: &Config) -> Option<St
             content: format!("{SINGLE_ROUND_USER_TEMPLATE}{diff}\n```"),
         },
     ];
-    match vllm::chat_complete(&messages, model, 2048, 0.1, cfg).await {
+    match vllm::chat_complete(&messages, model, 2048, 0.1, client, cfg).await {
         Ok(text) => Some(text),
         Err(e) => {
             eprintln!("Warning: single-round review failed: {e}");
@@ -110,7 +120,12 @@ async fn single_round_review(diff: &str, model: &str, cfg: &Config) -> Option<St
     }
 }
 
-async fn multi_round_review(diff: &str, model: &str, cfg: &Config) -> Option<String> {
+async fn multi_round_review(
+    diff: &str,
+    model: &str,
+    client: &reqwest::Client,
+    cfg: &Config,
+) -> Option<String> {
     let chunks = split_diff_into_chunks(diff, 2000);
     let mut reviews = vec![];
 
@@ -126,7 +141,7 @@ async fn multi_round_review(diff: &str, model: &str, cfg: &Config) -> Option<Str
                 content: chunk_user_prompt(chunk),
             },
         ];
-        match vllm::chat_complete(&messages, model, 1024, 0.1, cfg).await {
+        match vllm::chat_complete(&messages, model, 1024, 0.1, client, cfg).await {
             Ok(text) => reviews.push(text),
             Err(e) => {
                 eprintln!("Warning: Chunk {} error: {e}", i + 1);
@@ -145,7 +160,7 @@ async fn multi_round_review(diff: &str, model: &str, cfg: &Config) -> Option<Str
         .cloned()
         .collect();
 
-    match summarize_review(&valid_reviews, model, cfg).await {
+    match summarize_review(&valid_reviews, model, client, cfg).await {
         Some(summary) => Some(summary),
         None => {
             eprintln!("Warning: summarization failed, falling back to raw chunk output.");
@@ -197,6 +212,7 @@ const SUMMARIZE_USER_TEMPLATE: &str = concat!(
 pub async fn summarize_review(
     chunk_reviews: &[String],
     model: &str,
+    client: &reqwest::Client,
     cfg: &Config,
 ) -> Option<String> {
     if chunk_reviews.is_empty() {
@@ -213,7 +229,7 @@ pub async fn summarize_review(
             content: format!("{SUMMARIZE_USER_TEMPLATE}{combined}"),
         },
     ];
-    match vllm::chat_complete(&messages, model, 2048, 0.2, cfg).await {
+    match vllm::chat_complete(&messages, model, 2048, 0.2, client, cfg).await {
         Ok(text) => Some(text),
         Err(e) => {
             eprintln!("Warning: summarization failed: {e}");
@@ -228,11 +244,10 @@ pub async fn post_pr_comment(
     repo: &str,
     pr_number: u64,
     token: &str,
-) -> bool {
+) -> Result<(), String> {
     const MAX_LEN: usize = 60_000;
     let mut body = review.to_string();
     if body.len() > MAX_LEN {
-        // Find the last valid UTF-8 char boundary at or before MAX_LEN - 50
         let cutoff = MAX_LEN - 50;
         let safe_cut = body
             .char_indices()
@@ -248,15 +263,22 @@ pub async fn post_pr_comment(
     let url = format!(
         "https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
     );
-    client
+    let resp = client
         .post(&url)
         .header("Authorization", format!("token {token}"))
         .header("User-Agent", "code-review-cli")
         .json(&serde_json::json!({ "body": body }))
         .send()
         .await
-        .map(|r| r.status().is_success())
-        .unwrap_or(false)
+        .map_err(|e| format!("HTTP request failed: {e}"))?;
+
+    if resp.status().is_success() {
+        Ok(())
+    } else {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        Err(format!("GitHub API returned {status}: {body}"))
+    }
 }
 
 #[cfg(test)]
