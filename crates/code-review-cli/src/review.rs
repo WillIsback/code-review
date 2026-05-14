@@ -70,21 +70,23 @@ pub async fn review_diff(diff: &str, model: &str, cfg: &Config) -> Option<String
     if reviews.is_empty() { None } else { Some(reviews.join("\n\n---\n\n")) }
 }
 
-const SUMMARIZE_SYSTEM_PROMPT: &str = "You are a senior code reviewer. Given a list of raw \
-    review bullets collected from multiple diff chunks, produce a single concise review with \
-    exactly two sections:\n\
-    ## Code Quality Issues\n\
-    A markdown table with columns: #, Location, Issue, Severity. \
-    Severity values: Critical, High, Medium, Low. \
-    Sort rows Critical first, then High, Medium, Low. \
-    Deduplicate similar findings.\n\n\
-    ## Security Issues\n\
-    A markdown table with columns: #, Location, Issue, Risk Level. \
-    Risk Level values: Critical, High, Medium, Low. \
-    Sort rows Critical first, then High, Medium, Low. \
-    Deduplicate similar findings.\n\n\
-    If a section has no findings, write 'No issues found.' under the heading. \
-    Output only the two sections. No preamble, no conclusion.";
+const SUMMARIZE_SYSTEM_PROMPT: &str = concat!(
+    "You are a senior code reviewer. Given a list of raw review bullets ",
+    "collected from multiple diff chunks, produce a single concise review with exactly ",
+    "two sections:\n",
+    "## Code Quality Issues\n",
+    "A markdown table with columns: #, Location, Issue, Severity. ",
+    "Severity values: Critical, High, Medium, Low. ",
+    "Sort rows Critical first, then High, Medium, Low. ",
+    "Deduplicate similar findings.\n\n",
+    "## Security Issues\n",
+    "A markdown table with columns: #, Location, Issue, Risk Level. ",
+    "Risk Level values: Critical, High, Medium, Low. ",
+    "Sort rows Critical first, then High, Medium, Low. ",
+    "Deduplicate similar findings.\n\n",
+    "If a section has no findings, write 'No issues found.' under the heading. ",
+    "Output only the two sections. No preamble, no conclusion."
+);
 
 /// Feed all chunk bullet outputs into a reasoning LLM call and return the
 /// structured two-section Markdown summary.
@@ -96,7 +98,7 @@ pub async fn summarize_review(
     if chunk_reviews.is_empty() {
         return None;
     }
-    let combined = chunk_reviews.join("\n");
+    let combined = chunk_reviews.join("\n\n---\n\n");
     let messages = vec![
         ChatMessage {
             role: "system",
