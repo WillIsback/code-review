@@ -266,12 +266,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn summarize_prompt_contains_both_sections() {
-        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("## Code Quality Issues"));
-        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("## Security Issues"));
-        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("Severity"));
-        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("Risk Level"));
-        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("Sort rows Critical first"));
+    fn summarize_system_prompt_is_role_focused() {
+        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("senior software engineer"),
+            "system prompt must establish engineer role");
+        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("pull request code review"),
+            "system prompt must state the task");
+        assert!(!SUMMARIZE_SYSTEM_PROMPT.contains("## Code Quality Issues"),
+            "format instructions must be in the user message, not system prompt");
     }
 
     #[test]
@@ -308,11 +309,11 @@ mod tests {
 
     #[test]
     fn single_round_prompt_contains_both_sections() {
-        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("## Code Quality Issues"));
-        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("## Security Issues"));
+        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("Code Quality Issues"));
+        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("Security Issues"));
         assert!(SINGLE_ROUND_USER_TEMPLATE.contains("Severity"));
         assert!(SINGLE_ROUND_USER_TEMPLATE.contains("Risk Level"));
-        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("Sort Critical first"));
+        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("Sort rows: Critical first"));
     }
 
     #[test]
