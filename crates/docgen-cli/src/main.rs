@@ -20,6 +20,7 @@ async fn main() {
 
     let args = Cli::parse();
     let cfg = Config::from_env();
+    let client = cfg.connect_client();
 
     // 1. Dirty-tree guard
     let dirty = git::dirty_files(std::path::Path::new("."));
@@ -34,13 +35,13 @@ async fn main() {
     }
 
     // 2. vLLM reachability
-    if !vllm::check_reachable(&cfg).await {
+    if !vllm::check_reachable(&client, &cfg).await {
         eprintln!("error: vLLM not reachable at {}", cfg.vllm_base_url);
         std::process::exit(1);
     }
 
     // 3. Model detection
-    let model = match vllm::resolve_model(&cfg).await {
+    let model = match vllm::resolve_model(&client, &cfg).await {
         Ok(m) => {
             println!("Auto-detected model: {m}");
             m

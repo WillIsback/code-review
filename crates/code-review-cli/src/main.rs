@@ -12,10 +12,17 @@ async fn main() {
     println!("{}", "=".repeat(60));
 
     let cfg = Config::from_env();
-    let gh = github::GithubConfig::from_env();
+    let client = cfg.connect_client();
+    let gh = match github::GithubConfig::from_env() {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!("GitHub configuration error: {e}");
+            std::process::exit(1);
+        }
+    };
 
     // Detect model
-    let model = match vllm::resolve_model(&cfg).await {
+    let model = match vllm::resolve_model(&client, &cfg).await {
         Ok(m) => {
             println!("Auto-detected model: {m}");
             m
@@ -44,8 +51,9 @@ async fn main() {
 
     println!("Diff size: {} chars", diff.len());
 
-    // Review
-    let review_text = match review::review_diff(&diff, &model, &cfg).await {
+    // Review (use a client with the full vLLM timeout for LLM requests)
+    let llm_client = cfg.http_client();
+    let review_text = match review::review_diff(&diff, &model, &llm_client, &cfg).await {
         Some(r) => r,
         None => {
             eprintln!("Review failed or returned empty.");
@@ -56,10 +64,11 @@ async fn main() {
     println!("{review_text}");
 
     // Post comment
-    if review::post_pr_comment(&review_text, &gh.repository, gh.pr_number, &gh.token).await {
-        println!("Review comment posted successfully.");
-    } else {
-        eprintln!("Review generated but comment posting failed.");
-        std::process::exit(1);
+    match review::post_pr_comment(&review_text, &gh.repository, gh.pr_number, &gh.token).await {
+        Ok(()) => println!("Review comment posted successfully."),
+        Err(e) => {
+            eprintln!("Review generated but comment posting failed: {e}");
+            std::process::exit(1);
+        }
     }
 }

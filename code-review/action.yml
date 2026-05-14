@@ -49,8 +49,7 @@ runs:
         GITHUB_TOKEN:        ${{ inputs.github-token }}
         VLLM_BASE_URL:       ${{ inputs.vllm-url }}
         VLLM_MODEL:          ${{ inputs.vllm-model }}
-        VLLM_TIMEOUT:        ${{ inputs.vllm-timeout }}
-        VLLM_RETRIES:        ${{ inputs.vllm-retries }}
+        VLLM_TIMEOUT_SECS:   ${{ inputs.vllm-timeout }}
         GITHUB_REPOSITORY:   ${{ github.repository }}
         PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
       run: ${{ github.action_path }}/code-review-cli

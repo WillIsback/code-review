@@ -1,5 +1,6 @@
 use std::env;
 
+#[derive(Debug)]
 pub struct GithubConfig {
     pub repository: String,
     pub pr_number:  u64,
@@ -7,17 +8,17 @@ pub struct GithubConfig {
 }
 
 impl GithubConfig {
-    pub fn from_env() -> Self {
-        Self {
+    pub fn from_env() -> Result<Self, String> {
+        Ok(Self {
             repository: env::var("GITHUB_REPOSITORY")
-                .expect("GITHUB_REPOSITORY must be set"),
+                .map_err(|_| "GITHUB_REPOSITORY must be set")?,
             pr_number: env::var("PULL_REQUEST_NUMBER")
-                .expect("PULL_REQUEST_NUMBER must be set")
+                .map_err(|_| "PULL_REQUEST_NUMBER must be set")?
                 .parse()
-                .expect("PULL_REQUEST_NUMBER must be a number"),
+                .map_err(|_| "PULL_REQUEST_NUMBER must be a number")?,
             token: env::var("GITHUB_TOKEN")
-                .expect("GITHUB_TOKEN must be set"),
-        }
+                .map_err(|_| "GITHUB_TOKEN must be set")?,
+        })
     }
 }
 
@@ -33,8 +34,8 @@ fn should_skip_file(filename: &str) -> bool {
         || filename.ends_with(".lock")
         || filename.ends_with(".lockb")
         || filename.ends_with("-lock.json")
-        || filename.ends_with("lock.yaml")
-        || filename.ends_with("lock.yml")
+        || basename == "lock.yaml"
+        || basename == "lock.yml"
     {
         return true;
     }
@@ -93,6 +94,7 @@ pub async fn fetch_pr_diff(cfg: &GithubConfig) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn skip_file_skips_bun_lockb() {
@@ -125,13 +127,14 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn env_config_reads_vars() {
         unsafe {
             std::env::set_var("GITHUB_REPOSITORY", "owner/repo");
             std::env::set_var("PULL_REQUEST_NUMBER", "42");
             std::env::set_var("GITHUB_TOKEN", "ghp_test");
         }
-        let cfg = GithubConfig::from_env();
+        let cfg = GithubConfig::from_env().expect("env vars are set");
         assert_eq!(cfg.repository, "owner/repo");
         assert_eq!(cfg.pr_number, 42u64);
         assert_eq!(cfg.token, "ghp_test");
@@ -140,5 +143,18 @@ mod tests {
             std::env::remove_var("PULL_REQUEST_NUMBER");
             std::env::remove_var("GITHUB_TOKEN");
         }
+    }
+
+    #[test]
+    #[serial]
+    fn env_config_returns_error_when_missing() {
+        unsafe {
+            std::env::remove_var("GITHUB_REPOSITORY");
+            std::env::remove_var("PULL_REQUEST_NUMBER");
+            std::env::remove_var("GITHUB_TOKEN");
+        }
+        let result = GithubConfig::from_env();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("GITHUB_REPOSITORY"));
     }
 }

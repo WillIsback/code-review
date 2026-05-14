@@ -11,3 +11,6 @@ serde_json = { workspace = true }
 thiserror  = { workspace = true }
 miette     = { workspace = true }
 git2       = { version = "0.20", features = ["vendored-openssl"] }
+
+[dev-dependencies]
+serial_test = "3"

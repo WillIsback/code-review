@@ -21,7 +21,11 @@ pub struct ChatMessage {
 
 /// POST a JSON body to the vLLM chat completions endpoint and extract the
 /// first choice's `content` field.
-async fn post_chat_completions(body: serde_json::Value, cfg: &Config) -> Result<String, CoreError> {
+async fn post_chat_completions(
+    body: serde_json::Value,
+    client: &reqwest::Client,
+    cfg: &Config,
+) -> Result<String, CoreError> {
     let base = cfg.vllm_base_url.trim_end_matches('/');
     let url = if base.ends_with("/v1") {
         format!("{base}/chat/completions")
@@ -29,14 +33,9 @@ async fn post_chat_completions(body: serde_json::Value, cfg: &Config) -> Result<
         format!("{base}/v1/chat/completions")
     };
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(cfg.vllm_timeout_secs))
-        .build()
-        .expect("valid client");
-
     let resp: serde_json::Value = client
         .post(&url)
-        .header("Authorization", "Bearer none")
+        .header("Authorization", format!("Bearer {}", cfg.vllm_api_key))
         .json(&body)
         .send()
         .await
@@ -62,6 +61,7 @@ pub async fn chat_complete(
     model: &str,
     max_tokens: u32,
     temperature: f32,
+    client: &reqwest::Client,
     cfg: &Config,
 ) -> Result<String, CoreError> {
     let msgs: Vec<_> = messages
@@ -77,7 +77,7 @@ pub async fn chat_complete(
         "chat_template_kwargs": {"enable_thinking": false}
     });
 
-    post_chat_completions(body, cfg).await
+    post_chat_completions(body, client, cfg).await
 }
 
 fn build_reasoning_body(
@@ -106,38 +106,31 @@ pub async fn chat_complete_with_reasoning(
     model: &str,
     max_tokens: u32,
     temperature: f32,
+    client: &reqwest::Client,
     cfg: &Config,
 ) -> Result<String, CoreError> {
     let body = build_reasoning_body(messages, model, max_tokens, temperature);
-    post_chat_completions(body, cfg).await
+    post_chat_completions(body, client, cfg).await
 }
 
 /// Returns `true` when the vLLM /v1/models endpoint responds with 2xx.
-pub async fn check_reachable(cfg: &Config) -> bool {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(cfg.connect_timeout_secs))
-        .build()
-        .expect("valid client");
+pub async fn check_reachable(client: &reqwest::Client, cfg: &Config) -> bool {
     client.get(cfg.models_url()).send().await
         .map(|r| r.status().is_success())
         .unwrap_or(false)
 }
 
 /// Returns `VLLM_MODEL` env var if set, otherwise auto-detects from server.
-pub async fn resolve_model(cfg: &Config) -> Result<String, CoreError> {
+pub async fn resolve_model(client: &reqwest::Client, cfg: &Config) -> Result<String, CoreError> {
     if let Some(model) = std::env::var("VLLM_MODEL").ok().filter(|s| !s.trim().is_empty()) {
         Ok(model)
     } else {
-        detect_model(cfg).await
+        detect_model(client, cfg).await
     }
 }
 
 /// Returns the first model ID advertised by the vLLM server.
-pub async fn detect_model(cfg: &Config) -> Result<String, CoreError> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(cfg.connect_timeout_secs))
-        .build()
-        .expect("valid client");
+pub async fn detect_model(client: &reqwest::Client, cfg: &Config) -> Result<String, CoreError> {
     let resp: ModelsResponse = client
         .get(cfg.models_url())
         .send()

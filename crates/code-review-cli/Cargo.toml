@@ -14,3 +14,6 @@ reqwest      = { workspace = true }
 serde_json   = { workspace = true }
 octocrab     = "0.41"
 dotenvy      = { workspace = true }
+
+[dev-dependencies]
+serial_test = "3"
