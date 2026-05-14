@@ -4,7 +4,7 @@ use toolkit_core::vllm::{self, ChatMessage};
 /// Construct the user prompt for a diff chunk review.
 fn chunk_user_prompt(chunk: &str) -> String {
     format!(
-        "Review this diff chunk. List only:\n- CODE: <file>:<line> — <issue>\n- SEC: <file>:<line> — <issue>\nNo headings, no prose, bullets only.\n\n```diff\n{chunk}\n```"
+        "Review this diff chunk. List only:\n- CODE: <file>:<line> - <issue>\n- SEC: <file>:<line> - <issue>\nNo headings, no prose, bullets only.\n\n```diff\n{chunk}\n```"
     )
 }
 
@@ -72,7 +72,13 @@ pub async fn review_diff(diff: &str, model: &str, cfg: &Config) -> Option<String
     }
 
     // Reasoning summarization pass — falls back to raw concat on failure.
-    match summarize_review(&reviews, model, cfg).await {
+    let valid_reviews: Vec<String> = reviews
+        .iter()
+        .filter(|r| !r.starts_with("Chunk ") || !r.contains(": error during analysis"))
+        .cloned()
+        .collect();
+
+    match summarize_review(&valid_reviews, model, cfg).await {
         Some(summary) => Some(summary),
         None => {
             eprintln!("Warning: summarization failed, falling back to raw chunk output.");
