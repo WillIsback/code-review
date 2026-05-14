@@ -161,6 +161,37 @@ const SUMMARIZE_SYSTEM_PROMPT: &str =
     "You are a senior software engineer performing a pull request code review. \
      Be precise, actionable, and output only the requested format. No preamble, no conclusion.";
 
+const SUMMARIZE_USER_TEMPLATE: &str = concat!(
+    "Review these findings and output exactly this structure:\n\n",
+    "---\n",
+    "findings:\n",
+    "  critical: <count>\n",
+    "  high: <count>\n",
+    "  medium: <count>\n",
+    "  low: <count>\n",
+    "top_files:\n",
+    "  - <up to 3 files with most findings>\n",
+    "risk_score: <critical|high|medium|low|none>\n",
+    "---\n\n",
+    "## 🔍 AI Code Review\n\n",
+    "### 🛠 Code Quality Issues\n\n",
+    "| # | Location | Issue | Severity |\n",
+    "|---|----------|-------|----------|\n",
+    "| 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "### 🔒 Security Issues\n\n",
+    "| # | Location | Issue | Risk Level |\n",
+    "|---|----------|-------|------------|\n",
+    "| 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "Rules:\n",
+    "- Sort rows: Critical first, then High, Medium, Low\n",
+    "- Deduplicate similar findings across chunks\n",
+    "- If a section has no findings, write: | — | — | No issues found. | — |\n",
+    "- Location always in backticks\n",
+    "- top_files: files with most findings, max 3\n",
+    "- risk_score: highest severity present; none if no findings\n\n",
+    "Findings collected from all diff chunks:\n\n"
+);
+
 /// Feed all chunk bullet outputs into an LLM call and return the
 /// structured two-section Markdown summary.
 pub async fn summarize_review(
@@ -179,36 +210,7 @@ pub async fn summarize_review(
         },
         ChatMessage {
             role: "user",
-            content: format!(
-                "Review these findings and output exactly this structure:\n\n\
-                 ---\n\
-                 findings:\n\
-                   critical: <count>\n\
-                   high: <count>\n\
-                   medium: <count>\n\
-                   low: <count>\n\
-                 top_files:\n\
-                   - <up to 3 files with most findings>\n\
-                 risk_score: <critical|high|medium|low|none>\n\
-                 ---\n\n\
-                 ## 🔍 AI Code Review\n\n\
-                 ### 🛠 Code Quality Issues\n\n\
-                 | # | Location | Issue | Severity |\n\
-                 |---|----------|-------|----------|\n\
-                 | 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n\
-                 ### 🔒 Security Issues\n\n\
-                 | # | Location | Issue | Risk Level |\n\
-                 |---|----------|-------|------------|\n\
-                 | 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n\
-                 Rules:\n\
-                 - Sort rows: Critical first, then High, Medium, Low\n\
-                 - Deduplicate similar findings across chunks\n\
-                 - If a section has no findings, write: | — | — | No issues found. | — |\n\
-                 - Location always in backticks\n\
-                 - top_files: files with most findings, max 3\n\
-                 - risk_score: highest severity present; none if no findings\n\n\
-                 Findings collected from all diff chunks:\n\n{combined}",
-            ),
+            content: format!("{SUMMARIZE_USER_TEMPLATE}{combined}"),
         },
     ];
     match vllm::chat_complete(&messages, model, 2048, 0.2, cfg).await {
@@ -364,5 +366,35 @@ mod tests {
             assert!(!prompt.contains("markdown table"),
                 "format instructions belong in user prompts, not system prompts");
         }
+    }
+
+    #[test]
+    fn summarize_template_contains_yaml_frontmatter() {
+        assert!(SUMMARIZE_USER_TEMPLATE.contains("findings:"),
+            "summarize template must include YAML findings key");
+        assert!(SUMMARIZE_USER_TEMPLATE.contains("risk_score:"),
+            "summarize template must include YAML risk_score key");
+        assert!(SUMMARIZE_USER_TEMPLATE.contains("top_files:"),
+            "summarize template must include YAML top_files key");
+    }
+
+    #[test]
+    fn summarize_template_contains_emoji_severity_badges() {
+        assert!(SUMMARIZE_USER_TEMPLATE.contains("🔴 Critical"),
+            "summarize template must include red circle for Critical");
+        assert!(SUMMARIZE_USER_TEMPLATE.contains("🟠 High"),
+            "summarize template must include orange circle for High");
+        assert!(SUMMARIZE_USER_TEMPLATE.contains("🟡 Medium"),
+            "summarize template must include yellow circle for Medium");
+        assert!(SUMMARIZE_USER_TEMPLATE.contains("🟢 Low"),
+            "summarize template must include green circle for Low");
+    }
+
+    #[test]
+    fn summarize_template_has_deduplication_rule() {
+        assert!(SUMMARIZE_USER_TEMPLATE.contains("Deduplicate similar findings across chunks"),
+            "summarize template must instruct LLM to deduplicate");
+        assert!(SUMMARIZE_USER_TEMPLATE.contains("Findings collected from all diff chunks:"),
+            "summarize template must end with the findings section header");
     }
 }
