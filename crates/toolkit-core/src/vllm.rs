@@ -19,34 +19,15 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-/// Call /v1/chat/completions with thinking disabled.
-/// Returns the first choice's content string, or an error.
-pub async fn chat_complete(
-    messages: &[ChatMessage],
-    model: &str,
-    max_tokens: u32,
-    temperature: f32,
-    cfg: &Config,
-) -> Result<String, CoreError> {
+/// POST a JSON body to the vLLM chat completions endpoint and extract the
+/// first choice's `content` field.
+async fn post_chat_completions(body: serde_json::Value, cfg: &Config) -> Result<String, CoreError> {
     let base = cfg.vllm_base_url.trim_end_matches('/');
     let url = if base.ends_with("/v1") {
         format!("{base}/chat/completions")
     } else {
         format!("{base}/v1/chat/completions")
     };
-
-    let msgs: Vec<_> = messages
-        .iter()
-        .map(|m| json!({"role": m.role, "content": m.content}))
-        .collect();
-
-    let body = json!({
-        "model": model,
-        "messages": msgs,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        "chat_template_kwargs": {"enable_thinking": false}
-    });
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(cfg.vllm_timeout_secs))
@@ -72,6 +53,63 @@ pub async fn chat_complete(
         })?;
 
     Ok(content.to_string())
+}
+
+/// Call /v1/chat/completions with thinking disabled.
+/// Returns the first choice's content string, or an error.
+pub async fn chat_complete(
+    messages: &[ChatMessage],
+    model: &str,
+    max_tokens: u32,
+    temperature: f32,
+    cfg: &Config,
+) -> Result<String, CoreError> {
+    let msgs: Vec<_> = messages
+        .iter()
+        .map(|m| json!({"role": m.role, "content": m.content}))
+        .collect();
+
+    let body = json!({
+        "model": model,
+        "messages": msgs,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "chat_template_kwargs": {"enable_thinking": false}
+    });
+
+    post_chat_completions(body, cfg).await
+}
+
+fn build_reasoning_body(
+    messages: &[ChatMessage],
+    model: &str,
+    max_tokens: u32,
+    temperature: f32,
+) -> serde_json::Value {
+    let msgs: Vec<_> = messages
+        .iter()
+        .map(|m| json!({"role": m.role, "content": m.content}))
+        .collect();
+    json!({
+        "model": model,
+        "messages": msgs,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "chat_template_kwargs": {"enable_thinking": true}
+    })
+}
+
+/// Call /v1/chat/completions with thinking enabled (reasoning model).
+/// Discards `reasoning_content`; returns the final `content` string.
+pub async fn chat_complete_with_reasoning(
+    messages: &[ChatMessage],
+    model: &str,
+    max_tokens: u32,
+    temperature: f32,
+    cfg: &Config,
+) -> Result<String, CoreError> {
+    let body = build_reasoning_body(messages, model, max_tokens, temperature);
+    post_chat_completions(body, cfg).await
 }
 
 /// Returns `true` when the vLLM /v1/models endpoint responds with 2xx.
@@ -112,4 +150,18 @@ pub async fn detect_model(cfg: &Config) -> Result<String, CoreError> {
         .next()
         .map(|m| m.id)
         .ok_or(CoreError::NoModelsAvailable)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reasoning_body_enables_thinking() {
+        let msgs = vec![ChatMessage { role: "user", content: "hello".to_string() }];
+        let body = build_reasoning_body(&msgs, "test-model", 512, 0.1);
+        assert_eq!(body["chat_template_kwargs"]["enable_thinking"], true);
+        assert_eq!(body["model"], "test-model");
+        assert_eq!(body["messages"][0]["role"], "user");
+    }
 }
