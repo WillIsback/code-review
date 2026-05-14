@@ -25,6 +25,7 @@ jobs:
     name: AI Code Review
     runs-on: self-hosted
     needs: build-and-test
+    if: github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       pull-requests: write
     steps:
