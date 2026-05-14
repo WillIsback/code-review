@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+\.[0-9]+\.[0-9]+'
 
 jobs:
   release-linux:
@@ -34,7 +34,7 @@ jobs:
 
       - name: Install cross (cross-compilation only)
         if: matrix.target != 'x86_64-unknown-linux-gnu'
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        run: cargo install cross --git https://github.com/cross-rs/cross --tag v0.2.5
 
       - name: Build binaries (native)
         if: matrix.target == 'x86_64-unknown-linux-gnu'
