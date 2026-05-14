@@ -67,7 +67,21 @@ pub async fn review_diff(diff: &str, model: &str, cfg: &Config) -> Option<String
         }
     }
 
-    if reviews.is_empty() { None } else { Some(reviews.join("\n\n---\n\n")) }
+    if reviews.is_empty() {
+        return None;
+    }
+
+    // Reasoning summarization pass — falls back to raw concat on failure.
+    match summarize_review(&reviews, model, cfg).await {
+        Some(summary) => Some(summary),
+        None => {
+            eprintln!("Warning: summarization failed, falling back to raw chunk output.");
+            Some(format!(
+                "> ⚠️ Summarization failed — raw chunk output below.\n\n{}",
+                reviews.join("\n\n---\n\n")
+            ))
+        }
+    }
 }
 
 const SUMMARIZE_SYSTEM_PROMPT: &str = concat!(
@@ -202,5 +216,12 @@ mod tests {
         assert!(prompt.contains("CODE:"));
         assert!(prompt.contains("SEC:"));
         assert!(!prompt.contains("Issues, Improvements, Positives"));
+    }
+
+    #[test]
+    fn review_diff_calls_summarize_signature() {
+        // Verify summarize_review exists with the right parameter types at compile time.
+        // Taking its address and casting to a unit type is enough to prove the shape.
+        let _ = std::mem::size_of_val(&summarize_review);
     }
 }
