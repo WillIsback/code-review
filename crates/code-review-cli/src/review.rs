@@ -289,4 +289,46 @@ mod tests {
         let diff = "\n\n# File: a.rs\n+ foo\n";
         assert_eq!(diff.matches("\n\n# File:").count(), 1);
     }
+
+    #[test]
+    fn single_round_template_contains_yaml_frontmatter() {
+        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("findings:"),
+            "template must include YAML findings key");
+        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("risk_score:"),
+            "template must include YAML risk_score key");
+        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("top_files:"),
+            "template must include YAML top_files key");
+    }
+
+    #[test]
+    fn single_round_template_contains_emoji_severity_badges() {
+        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("🔴 Critical"),
+            "template must include red circle for Critical");
+        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("🟠 High"),
+            "template must include orange circle for High");
+        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("🟡 Medium"),
+            "template must include yellow circle for Medium");
+        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("🟢 Low"),
+            "template must include green circle for Low");
+    }
+
+    #[test]
+    fn single_round_template_contains_pipe_table_syntax() {
+        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("| # | Location |"),
+            "template must include pipe-syntax table header");
+        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("|---|"),
+            "template must include pipe-syntax table separator");
+    }
+
+    #[test]
+    fn system_prompts_are_role_focused_not_format_heavy() {
+        for prompt in &[SINGLE_ROUND_SYSTEM_PROMPT, SUMMARIZE_SYSTEM_PROMPT] {
+            assert!(prompt.contains("senior software engineer"),
+                "system prompt must establish senior engineer role");
+            assert!(prompt.contains("pull request code review"),
+                "system prompt must state the task");
+            assert!(!prompt.contains("markdown table"),
+                "format instructions belong in user prompts, not system prompts");
+        }
+    }
 }
