@@ -33,8 +33,8 @@ async fn main() {
     let diff = match github::fetch_pr_diff(&gh).await {
         Ok(d) if !d.trim().is_empty() => d,
         Ok(_) => {
-            eprintln!("Empty diff -- nothing to review.");
-            std::process::exit(1);
+            println!("Empty diff -- nothing to review (skipped).");
+            std::process::exit(0);
         }
         Err(e) => {
             eprintln!("Failed to fetch diff: {e}");

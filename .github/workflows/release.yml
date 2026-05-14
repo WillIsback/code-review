@@ -50,6 +50,11 @@ jobs:
           cp target/${{ matrix.target }}/release/code-review-cli code-review-cli-${{ matrix.platform }}
           cp target/${{ matrix.target }}/release/docgen docgen-${{ matrix.platform }}
 
+      - name: Generate SHA-256 checksums
+        run: |
+          sha256sum code-review-cli-${{ matrix.platform }} > code-review-cli-${{ matrix.platform }}.sha256
+          sha256sum docgen-${{ matrix.platform }} > docgen-${{ matrix.platform }}.sha256
+
       - name: Publish to GitHub Releases (latest)
         uses: softprops/action-gh-release@v2
         with:
@@ -57,7 +62,9 @@ jobs:
           name: Latest Release
           files: |
             code-review-cli-${{ matrix.platform }}
+            code-review-cli-${{ matrix.platform }}.sha256
             docgen-${{ matrix.platform }}
+            docgen-${{ matrix.platform }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

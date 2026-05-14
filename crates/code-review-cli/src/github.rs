@@ -27,8 +27,11 @@ impl GithubConfig {
 /// documentation files (`.md`, `.mdx`).
 fn should_skip_file(filename: &str) -> bool {
     // Lock files
-    if filename == "Cargo.lock"
+    let basename = filename.rsplit('/').next().unwrap_or(filename);
+    if basename == "Cargo.lock"
+        || basename == "npm-shrinkwrap.json"
         || filename.ends_with(".lock")
+        || filename.ends_with(".lockb")
         || filename.ends_with("-lock.json")
         || filename.ends_with("lock.yaml")
         || filename.ends_with("lock.yml")
@@ -90,6 +93,18 @@ pub async fn fetch_pr_diff(cfg: &GithubConfig) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn skip_file_skips_bun_lockb() {
+        assert!(should_skip_file("bun.lockb"));
+        assert!(should_skip_file("packages/app/bun.lockb"));
+    }
+
+    #[test]
+    fn skip_file_skips_npm_shrinkwrap() {
+        assert!(should_skip_file("npm-shrinkwrap.json"));
+        assert!(should_skip_file("packages/app/npm-shrinkwrap.json"));
+    }
 
     #[test]
     fn skip_file_filters_lock_dotfiles_and_markdown() {
