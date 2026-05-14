@@ -74,6 +74,25 @@ pub async fn chat_complete(
     Ok(content.to_string())
 }
 
+fn build_reasoning_body(
+    messages: &[ChatMessage],
+    model: &str,
+    max_tokens: u32,
+    temperature: f32,
+) -> serde_json::Value {
+    let msgs: Vec<_> = messages
+        .iter()
+        .map(|m| json!({"role": m.role, "content": m.content}))
+        .collect();
+    json!({
+        "model": model,
+        "messages": msgs,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "chat_template_kwargs": {"enable_thinking": true}
+    })
+}
+
 /// Call /v1/chat/completions with thinking enabled (reasoning model).
 /// Discards `reasoning_content`; returns the final `content` string.
 pub async fn chat_complete_with_reasoning(
@@ -90,18 +109,7 @@ pub async fn chat_complete_with_reasoning(
         format!("{base}/v1/chat/completions")
     };
 
-    let msgs: Vec<_> = messages
-        .iter()
-        .map(|m| serde_json::json!({"role": m.role, "content": m.content}))
-        .collect();
-
-    let body = serde_json::json!({
-        "model": model,
-        "messages": msgs,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        "chat_template_kwargs": {"enable_thinking": true}
-    });
+    let body = build_reasoning_body(messages, model, max_tokens, temperature);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(cfg.vllm_timeout_secs))
@@ -171,21 +179,14 @@ pub async fn detect_model(cfg: &Config) -> Result<String, CoreError> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn reasoning_body_enables_thinking() {
-        // Verify the JSON body produced for a reasoning call contains enable_thinking: true.
-        // We build the body the same way the function does and inspect it.
-        let msgs: Vec<serde_json::Value> = vec![
-            serde_json::json!({"role": "user", "content": "hello"}),
-        ];
-        let body = serde_json::json!({
-            "model": "test-model",
-            "messages": msgs,
-            "max_tokens": 512u32,
-            "temperature": 0.1f32,
-            "chat_template_kwargs": {"enable_thinking": true}
-        });
+        let msgs = vec![ChatMessage { role: "user", content: "hello".to_string() }];
+        let body = build_reasoning_body(&msgs, "test-model", 512, 0.1);
         assert_eq!(body["chat_template_kwargs"]["enable_thinking"], true);
-        assert_ne!(body["chat_template_kwargs"]["enable_thinking"], false);
+        assert_eq!(body["model"], "test-model");
+        assert_eq!(body["messages"][0]["role"], "user");
     }
 }
