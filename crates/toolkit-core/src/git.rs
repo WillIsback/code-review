@@ -29,7 +29,10 @@ mod tests {
     fn returns_vec_for_current_repo() {
         // The ai-devops-toolkit repo is at this path
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent().unwrap().parent().unwrap();
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
         let files = dirty_files(root);
         // Just assert no panic; content depends on local state
         let _ = files;

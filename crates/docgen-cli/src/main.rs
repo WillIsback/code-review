@@ -12,9 +12,7 @@ use toolkit_core::{config::Config, git, vllm};
 async fn main() {
     // Load global config first, then project .env overrides it
     if let Some(home) = std::env::var_os("HOME") {
-        let _ = dotenvy::from_path(
-            std::path::Path::new(&home).join(".config/docgen/.env")
-        );
+        let _ = dotenvy::from_path(std::path::Path::new(&home).join(".config/docgen/.env"));
     }
     let _ = dotenvy::dotenv();
 
@@ -82,14 +80,8 @@ async fn main() {
     );
 
     // 6. LLM processing
-    let patches = process::process_files(
-        to_process,
-        args.fmt.as_deref(),
-        args.force,
-        &model,
-        &cfg,
-    )
-    .await;
+    let patches =
+        process::process_files(to_process, args.fmt.as_deref(), args.force, &model, &cfg).await;
 
     if patches.is_empty() {
         eprintln!("warning: no files were successfully processed.");

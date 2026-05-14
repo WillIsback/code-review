@@ -85,8 +85,14 @@ pub async fn review_diff(
     }
 
     let file_count = diff.matches("\n\n# File:").count();
-    println!("Files in diff: {file_count} — using {} strategy",
-        if file_count <= 1 { "single-round" } else { "two-round" });
+    println!(
+        "Files in diff: {file_count} — using {} strategy",
+        if file_count <= 1 {
+            "single-round"
+        } else {
+            "two-round"
+        }
+    );
 
     if file_count <= 1 {
         single_round_review(diff, model, client, cfg).await
@@ -260,9 +266,7 @@ pub async fn post_pr_comment(
     }
 
     let client = reqwest::Client::new();
-    let url = format!(
-        "https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
-    );
+    let url = format!("https://api.github.com/repos/{repo}/issues/{pr_number}/comments");
     let resp = client
         .post(&url)
         .header("Authorization", format!("token {token}"))
@@ -287,18 +291,27 @@ mod tests {
 
     #[test]
     fn summarize_system_prompt_is_role_focused() {
-        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("senior software engineer"),
-            "system prompt must establish engineer role");
-        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("pull request code review"),
-            "system prompt must state the task");
-        assert!(!SUMMARIZE_SYSTEM_PROMPT.contains("## Code Quality Issues"),
-            "format instructions must be in the user message, not system prompt");
+        assert!(
+            SUMMARIZE_SYSTEM_PROMPT.contains("senior software engineer"),
+            "system prompt must establish engineer role"
+        );
+        assert!(
+            SUMMARIZE_SYSTEM_PROMPT.contains("pull request code review"),
+            "system prompt must state the task"
+        );
+        assert!(
+            !SUMMARIZE_SYSTEM_PROMPT.contains("## Code Quality Issues"),
+            "format instructions must be in the user message, not system prompt"
+        );
     }
 
     #[test]
     fn chunks_split_on_word_count() {
         // Build a diff with many lines so word count exceeds max_words=2000
-        let big = (0..5000).map(|i| format!("+ word{i}")).collect::<Vec<_>>().join("\n");
+        let big = (0..5000)
+            .map(|i| format!("+ word{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let chunks = split_diff_into_chunks(&big, 2000);
         assert!(chunks.len() > 1);
     }
@@ -350,73 +363,115 @@ mod tests {
 
     #[test]
     fn single_round_template_contains_yaml_frontmatter() {
-        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("findings:"),
-            "template must include YAML findings key");
-        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("risk_score:"),
-            "template must include YAML risk_score key");
-        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("top_files:"),
-            "template must include YAML top_files key");
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE.contains("findings:"),
+            "template must include YAML findings key"
+        );
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE.contains("risk_score:"),
+            "template must include YAML risk_score key"
+        );
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE.contains("top_files:"),
+            "template must include YAML top_files key"
+        );
     }
 
     #[test]
     fn single_round_template_contains_emoji_severity_badges() {
-        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("🔴 Critical"),
-            "template must include red circle for Critical");
-        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("🟠 High"),
-            "template must include orange circle for High");
-        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("🟡 Medium"),
-            "template must include yellow circle for Medium");
-        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("🟢 Low"),
-            "template must include green circle for Low");
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE.contains("🔴 Critical"),
+            "template must include red circle for Critical"
+        );
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE.contains("🟠 High"),
+            "template must include orange circle for High"
+        );
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE.contains("🟡 Medium"),
+            "template must include yellow circle for Medium"
+        );
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE.contains("🟢 Low"),
+            "template must include green circle for Low"
+        );
     }
 
     #[test]
     fn single_round_template_contains_pipe_table_syntax() {
-        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("| # | Location |"),
-            "template must include pipe-syntax table header");
-        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("|---|"),
-            "template must include pipe-syntax table separator");
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE.contains("| # | Location |"),
+            "template must include pipe-syntax table header"
+        );
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE.contains("|---|"),
+            "template must include pipe-syntax table separator"
+        );
     }
 
     #[test]
     fn system_prompts_are_role_focused_not_format_heavy() {
         for prompt in &[SINGLE_ROUND_SYSTEM_PROMPT, SUMMARIZE_SYSTEM_PROMPT] {
-            assert!(prompt.contains("senior software engineer"),
-                "system prompt must establish senior engineer role");
-            assert!(prompt.contains("pull request code review"),
-                "system prompt must state the task");
-            assert!(!prompt.contains("markdown table"),
-                "format instructions belong in user prompts, not system prompts");
+            assert!(
+                prompt.contains("senior software engineer"),
+                "system prompt must establish senior engineer role"
+            );
+            assert!(
+                prompt.contains("pull request code review"),
+                "system prompt must state the task"
+            );
+            assert!(
+                !prompt.contains("markdown table"),
+                "format instructions belong in user prompts, not system prompts"
+            );
         }
     }
 
     #[test]
     fn summarize_template_contains_yaml_frontmatter() {
-        assert!(SUMMARIZE_USER_TEMPLATE.contains("findings:"),
-            "summarize template must include YAML findings key");
-        assert!(SUMMARIZE_USER_TEMPLATE.contains("risk_score:"),
-            "summarize template must include YAML risk_score key");
-        assert!(SUMMARIZE_USER_TEMPLATE.contains("top_files:"),
-            "summarize template must include YAML top_files key");
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("findings:"),
+            "summarize template must include YAML findings key"
+        );
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("risk_score:"),
+            "summarize template must include YAML risk_score key"
+        );
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("top_files:"),
+            "summarize template must include YAML top_files key"
+        );
     }
 
     #[test]
     fn summarize_template_contains_emoji_severity_badges() {
-        assert!(SUMMARIZE_USER_TEMPLATE.contains("🔴 Critical"),
-            "summarize template must include red circle for Critical");
-        assert!(SUMMARIZE_USER_TEMPLATE.contains("🟠 High"),
-            "summarize template must include orange circle for High");
-        assert!(SUMMARIZE_USER_TEMPLATE.contains("🟡 Medium"),
-            "summarize template must include yellow circle for Medium");
-        assert!(SUMMARIZE_USER_TEMPLATE.contains("🟢 Low"),
-            "summarize template must include green circle for Low");
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("🔴 Critical"),
+            "summarize template must include red circle for Critical"
+        );
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("🟠 High"),
+            "summarize template must include orange circle for High"
+        );
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("🟡 Medium"),
+            "summarize template must include yellow circle for Medium"
+        );
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("🟢 Low"),
+            "summarize template must include green circle for Low"
+        );
     }
 
     #[test]
     fn summarize_template_has_deduplication_rule() {
-        assert!(SUMMARIZE_USER_TEMPLATE.contains("Deduplicate similar findings across chunks"),
-            "summarize template must instruct LLM to deduplicate");
-        assert!(SUMMARIZE_USER_TEMPLATE.contains("Findings collected from all diff chunks:"),
-            "summarize template must end with the findings section header");
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("Deduplicate similar findings across chunks"),
+            "summarize template must instruct LLM to deduplicate"
+        );
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("Findings collected from all diff chunks:"),
+            "summarize template must end with the findings section header"
+        );
     }
 }

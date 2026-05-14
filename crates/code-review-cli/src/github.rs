@@ -3,8 +3,8 @@ use std::env;
 #[derive(Debug)]
 pub struct GithubConfig {
     pub repository: String,
-    pub pr_number:  u64,
-    pub token:      String,
+    pub pr_number: u64,
+    pub token: String,
 }
 
 impl GithubConfig {
@@ -16,8 +16,7 @@ impl GithubConfig {
                 .map_err(|_| "PULL_REQUEST_NUMBER must be set")?
                 .parse()
                 .map_err(|_| "PULL_REQUEST_NUMBER must be a number")?,
-            token: env::var("GITHUB_TOKEN")
-                .map_err(|_| "GITHUB_TOKEN must be set")?,
+            token: env::var("GITHUB_TOKEN").map_err(|_| "GITHUB_TOKEN must be set")?,
         })
     }
 }

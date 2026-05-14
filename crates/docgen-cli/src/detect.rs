@@ -72,8 +72,7 @@ pub fn ts_has_missing_docstrings(source: &str, force: bool) -> bool {
             let start_byte = node.start_byte();
             let preceding = &source[..start_byte];
             let trimmed = preceding.trim_end();
-            let has_jsdoc = trimmed.ends_with("*/")
-                && preceding.contains("/**");
+            let has_jsdoc = trimmed.ends_with("*/") && preceding.contains("/**");
             if !has_jsdoc || force {
                 return true;
             }
@@ -156,6 +155,10 @@ mod tests {
         let py_path = std::path::Path::new("src/foo.py");
         assert!(needs_docstrings(py_path, "def foo():\n    pass\n", false));
         let ts_path = std::path::Path::new("src/foo.ts");
-        assert!(needs_docstrings(ts_path, "function foo(): void {}\n", false));
+        assert!(needs_docstrings(
+            ts_path,
+            "function foo(): void {}\n",
+            false
+        ));
     }
 }

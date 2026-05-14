@@ -7,7 +7,11 @@ const EXTENSIONS: &[&str] = &["py", "ts", "tsx"];
 pub fn resolve_files(target: &Path, recursive: bool) -> Vec<PathBuf> {
     if target.is_file() {
         let ext = target.extension().and_then(|e| e.to_str()).unwrap_or("");
-        return if EXTENSIONS.contains(&ext) { vec![target.to_path_buf()] } else { vec![] };
+        return if EXTENSIONS.contains(&ext) {
+            vec![target.to_path_buf()]
+        } else {
+            vec![]
+        };
     }
     let mut out = collect_dir(target, recursive);
     out.sort();
@@ -15,7 +19,9 @@ pub fn resolve_files(target: &Path, recursive: bool) -> Vec<PathBuf> {
 }
 
 fn collect_dir(dir: &Path, recursive: bool) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return vec![] };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return vec![];
+    };
     let mut out = vec![];
     for entry in entries.flatten() {
         let path = entry.path();
