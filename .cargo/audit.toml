@@ -1,0 +1,12 @@
+# cargo-audit configuration
+# https://github.com/rustsec/rustsec/blob/main/cargo-audit/audit.toml.example
+
+[advisories]
+# RUSTSEC-2023-0071: Marvin Attack — potential RSA key recovery through timing side-channels
+# Affected crate: rsa 0.9.x (transitively via octocrab → jsonwebtoken → rsa)
+# Status: No fixed version available upstream as of 2026-05.
+# Risk assessment: LOW for this project. The `rsa` crate is only reachable via
+# jsonwebtoken's RS256 signing path, which is used for GitHub App JWT authentication.
+# This project authenticates with a personal access token (PAT), so no RSA private-key
+# operations are performed at runtime. Re-evaluate once rsa ≥ 0.10 is released.
+ignore = ["RUSTSEC-2023-0071"]
