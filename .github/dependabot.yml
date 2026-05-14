@@ -10,6 +10,8 @@ updates:
     labels:
       - "dependencies"
       - "rust"
+    commit-message:
+      prefix: "chore"
 
   # Scan workflow files for outdated GitHub Actions
   - package-ecosystem: "github-actions"
@@ -21,3 +23,5 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    commit-message:
+      prefix: "chore"
