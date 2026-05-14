@@ -70,6 +70,52 @@ pub async fn review_diff(diff: &str, model: &str, cfg: &Config) -> Option<String
     if reviews.is_empty() { None } else { Some(reviews.join("\n\n---\n\n")) }
 }
 
+const SUMMARIZE_SYSTEM_PROMPT: &str = "You are a senior code reviewer. Given a list of raw \
+    review bullets collected from multiple diff chunks, produce a single concise review with \
+    exactly two sections:\n\
+    ## Code Quality Issues\n\
+    A markdown table with columns: #, Location, Issue, Severity. \
+    Severity values: Critical, High, Medium, Low. \
+    Sort rows Critical first, then High, Medium, Low. \
+    Deduplicate similar findings.\n\n\
+    ## Security Issues\n\
+    A markdown table with columns: #, Location, Issue, Risk Level. \
+    Risk Level values: Critical, High, Medium, Low. \
+    Sort rows Critical first, then High, Medium, Low. \
+    Deduplicate similar findings.\n\n\
+    If a section has no findings, write 'No issues found.' under the heading. \
+    Output only the two sections. No preamble, no conclusion.";
+
+/// Feed all chunk bullet outputs into a reasoning LLM call and return the
+/// structured two-section Markdown summary.
+pub async fn summarize_review(
+    chunk_reviews: &[String],
+    model: &str,
+    cfg: &Config,
+) -> Option<String> {
+    if chunk_reviews.is_empty() {
+        return None;
+    }
+    let combined = chunk_reviews.join("\n");
+    let messages = vec![
+        ChatMessage {
+            role: "system",
+            content: SUMMARIZE_SYSTEM_PROMPT.to_string(),
+        },
+        ChatMessage {
+            role: "user",
+            content: format!("Here are the raw review bullets:\n\n{combined}"),
+        },
+    ];
+    match vllm::chat_complete_with_reasoning(&messages, model, 2048, 0.2, cfg).await {
+        Ok(text) => Some(text),
+        Err(e) => {
+            eprintln!("Warning: summarization failed: {e}");
+            None
+        }
+    }
+}
+
 /// Post the review text as a PR comment via the GitHub REST API.
 pub async fn post_pr_comment(
     review: &str,
@@ -114,6 +160,15 @@ pub async fn post_pr_comment(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn summarize_prompt_contains_both_sections() {
+        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("## Code Quality Issues"));
+        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("## Security Issues"));
+        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("Severity"));
+        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("Risk Level"));
+        assert!(SUMMARIZE_SYSTEM_PROMPT.contains("Sort rows Critical first"));
+    }
 
     #[test]
     fn chunks_split_on_word_count() {
