@@ -36,7 +36,7 @@ runs:
           *)       echo "Unsupported architecture: $ARCH"; exit 1 ;;
         esac
         curl -fsSL -o "${{ github.action_path }}/code-review-cli" \
-          "https://github.com/WillIsback/ai-devops-toolkit/releases/latest/download/${ASSET}"
+          "https://github.com/WillIsback/code-review/releases/latest/download/${ASSET}"
         chmod +x "${{ github.action_path }}/code-review-cli"
 
     - name: Run AI Code Review
