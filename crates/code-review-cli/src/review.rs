@@ -1,6 +1,13 @@
 use toolkit_core::config::Config;
 use toolkit_core::vllm::{self, ChatMessage};
 
+/// Construct the user prompt for a diff chunk review.
+fn chunk_user_prompt(chunk: &str) -> String {
+    format!(
+        "Review this diff chunk. List only:\n- CODE: <file>:<line> — <issue>\n- SEC: <file>:<line> — <issue>\nNo headings, no prose, bullets only.\n\n```diff\n{chunk}\n```"
+    )
+}
+
 /// Split a diff string into chunks capped at `max_words` words per chunk.
 pub fn split_diff_into_chunks(diff: &str, max_words: usize) -> Vec<String> {
     if diff.trim().is_empty() {
@@ -45,9 +52,7 @@ pub async fn review_diff(diff: &str, model: &str, cfg: &Config) -> Option<String
             },
             ChatMessage {
                 role: "user",
-                content: format!(
-                    "Review this diff chunk. List only:\n- CODE: <file>:<line> — <issue>\n- SEC: <file>:<line> — <issue>\nNo headings, no prose, bullets only.\n\n```diff\n{chunk}\n```"
-                ),
+                content: chunk_user_prompt(chunk),
             },
         ];
 
@@ -136,10 +141,7 @@ mod tests {
     fn chunk_prompt_contains_bullet_instructions() {
         // The per-chunk prompt must ask for CODE: and SEC: bullets, not Markdown sections.
         let chunk = "- old line\n+ new line\n";
-        // We build the prompt the same way review_diff does and check its content.
-        let prompt = format!(
-            "Review this diff chunk. List only:\n- CODE: <file>:<line> — <issue>\n- SEC: <file>:<line> — <issue>\nNo headings, no prose, bullets only.\n\n```diff\n{chunk}\n```"
-        );
+        let prompt = chunk_user_prompt(chunk);
         assert!(prompt.contains("CODE:"));
         assert!(prompt.contains("SEC:"));
         assert!(!prompt.contains("Issues, Improvements, Positives"));
