@@ -39,10 +39,14 @@ async fn post_chat_completions(
         .json(&body)
         .send()
         .await
-        .map_err(|e| CoreError::RequestFailed { reason: e.to_string() })?
+        .map_err(|e| CoreError::RequestFailed {
+            reason: e.to_string(),
+        })?
         .json()
         .await
-        .map_err(|e| CoreError::RequestFailed { reason: e.to_string() })?;
+        .map_err(|e| CoreError::RequestFailed {
+            reason: e.to_string(),
+        })?;
 
     let content = resp["choices"][0]["message"]["content"]
         .as_str()
@@ -115,14 +119,20 @@ pub async fn chat_complete_with_reasoning(
 
 /// Returns `true` when the vLLM /v1/models endpoint responds with 2xx.
 pub async fn check_reachable(client: &reqwest::Client, cfg: &Config) -> bool {
-    client.get(cfg.models_url()).send().await
+    client
+        .get(cfg.models_url())
+        .send()
+        .await
         .map(|r| r.status().is_success())
         .unwrap_or(false)
 }
 
 /// Returns `VLLM_MODEL` env var if set, otherwise auto-detects from server.
 pub async fn resolve_model(client: &reqwest::Client, cfg: &Config) -> Result<String, CoreError> {
-    if let Some(model) = std::env::var("VLLM_MODEL").ok().filter(|s| !s.trim().is_empty()) {
+    if let Some(model) = std::env::var("VLLM_MODEL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+    {
         Ok(model)
     } else {
         detect_model(client, cfg).await
@@ -135,7 +145,9 @@ pub async fn detect_model(client: &reqwest::Client, cfg: &Config) -> Result<Stri
         .get(cfg.models_url())
         .send()
         .await
-        .map_err(|_| CoreError::VllmUnreachable { url: cfg.models_url() })?
+        .map_err(|_| CoreError::VllmUnreachable {
+            url: cfg.models_url(),
+        })?
         .json()
         .await?;
     resp.data
@@ -151,7 +163,10 @@ mod tests {
 
     #[test]
     fn reasoning_body_enables_thinking() {
-        let msgs = vec![ChatMessage { role: "user", content: "hello".to_string() }];
+        let msgs = vec![ChatMessage {
+            role: "user",
+            content: "hello".to_string(),
+        }];
         let body = build_reasoning_body(&msgs, "test-model", 512, 0.1);
         assert_eq!(body["chat_template_kwargs"]["enable_thinking"], true);
         assert_eq!(body["model"], "test-model");

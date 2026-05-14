@@ -4,7 +4,7 @@ use std::env;
 pub struct Config {
     pub vllm_base_url: String,
     pub vllm_api_key: String,
-    pub batch_size:    usize,
+    pub batch_size: usize,
     pub connect_timeout_secs: u64,
     pub vllm_timeout_secs: u64,
 }
@@ -14,8 +14,7 @@ impl Config {
         Self {
             vllm_base_url: env::var("VLLM_BASE_URL")
                 .unwrap_or_else(|_| "http://localhost:30000/v1".to_string()),
-            vllm_api_key: env::var("VLLM_API_KEY")
-                .unwrap_or_else(|_| "none".to_string()),
+            vllm_api_key: env::var("VLLM_API_KEY").unwrap_or_else(|_| "none".to_string()),
             batch_size: env::var("BATCH_SIZE")
                 .ok()
                 .and_then(|v| v.parse().ok())

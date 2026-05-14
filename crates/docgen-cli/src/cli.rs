@@ -2,7 +2,10 @@ use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "docgen", about = "Generate docstrings using a local vLLM instance.")]
+#[command(
+    name = "docgen",
+    about = "Generate docstrings using a local vLLM instance."
+)]
 pub struct Cli {
     /// File or folder to process
     pub target: PathBuf,

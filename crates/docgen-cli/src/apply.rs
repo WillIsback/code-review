@@ -8,7 +8,7 @@ pub fn apply_with_git(patches: Vec<PatchResult>, repo_path: &Path) -> Result<(),
     let original_branch = head.shorthand().unwrap_or("").to_string();
     if original_branch.is_empty() {
         return Err(git2::Error::from_str(
-            "docgen requires a named branch (HEAD is detached)"
+            "docgen requires a named branch (HEAD is detached)",
         ));
     }
 
@@ -26,13 +26,17 @@ pub fn apply_with_git(patches: Vec<PatchResult>, repo_path: &Path) -> Result<(),
         std::fs::write(&patch.path, &patch.content)
             .map_err(|e| git2::Error::from_str(&e.to_string()))?;
         let workdir = repo.workdir().unwrap_or(Path::new("."));
-        let abs_path = patch.path.canonicalize()
+        let abs_path = patch
+            .path
+            .canonicalize()
             .map_err(|e| git2::Error::from_str(&e.to_string()))?;
-        let rel = abs_path
-            .strip_prefix(workdir)
-            .map_err(|_| git2::Error::from_str(
-                &format!("patch path {} is not under repo workdir {}", abs_path.display(), workdir.display())
-            ))?;
+        let rel = abs_path.strip_prefix(workdir).map_err(|_| {
+            git2::Error::from_str(&format!(
+                "patch path {} is not under repo workdir {}",
+                abs_path.display(),
+                workdir.display()
+            ))
+        })?;
         index.add_path(rel)?;
     }
     index.write()?;
@@ -71,7 +75,7 @@ pub fn apply_with_git(patches: Vec<PatchResult>, repo_path: &Path) -> Result<(),
     let merge_tree_id = merge_index.write_tree_to(&repo)?;
     if merge_index.has_conflicts() {
         return Err(git2::Error::from_str(
-            "merge conflict detected — docgen branch not merged; manual resolution required"
+            "merge conflict detected — docgen branch not merged; manual resolution required",
         ));
     }
     let merge_tree = repo.find_tree(merge_tree_id)?;
@@ -153,7 +157,10 @@ mod tests {
 
         // Assert working tree file matches patched content
         let on_disk = std::fs::read_to_string(dir.join(filename)).expect("read failed");
-        assert_eq!(on_disk, patched, "working tree file should contain patched content");
+        assert_eq!(
+            on_disk, patched,
+            "working tree file should contain patched content"
+        );
 
         // Assert a merge commit exists (merge commits have 2 parents)
         let output = std::process::Command::new("git")
