@@ -38,8 +38,11 @@ pub fn split_diff_into_chunks(diff: &str, max_words: usize) -> Vec<String> {
 }
 
 const SINGLE_ROUND_SYSTEM_PROMPT: &str =
-    "You are a senior software engineer performing a pull request code review. \
-     Be precise, actionable, and output only the requested format. No preamble, no conclusion.";
+    "You are a senior software engineer performing a thorough pull request code review. \
+     Your goal is to help the author ship better code by providing detailed, actionable feedback. \
+     For each finding, explain WHY it matters and HOW to fix it. \
+     Be constructive: acknowledge good patterns alongside issues. \
+     Output the requested format.";
 
 const SINGLE_ROUND_USER_TEMPLATE: &str = concat!(
     "Review this diff and output exactly this structure:\n\n",
@@ -54,20 +57,34 @@ const SINGLE_ROUND_USER_TEMPLATE: &str = concat!(
     "risk_score: <critical|high|medium|low|none>\n",
     "---\n\n",
     "## 🔍 AI Code Review\n\n",
+    "### 📋 Summary\n\n",
+    "Write 2-4 sentences summarizing the overall changes, their purpose, and the general code quality.\n\n",
     "### 🛠 Code Quality Issues\n\n",
     "| # | Location | Issue | Severity |\n",
     "|---|----------|-------|----------|\n",
     "| 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "For each issue above, add a detail block:\n\n",
+    "#### Issue N: <short title>\n",
+    "**Why it matters:** Explain the impact (bug risk, performance, maintainability).\n",
+    "**Suggestion:** Provide a concrete fix or improvement, with a short code snippet if helpful.\n\n",
     "### 🔒 Security Issues\n\n",
     "| # | Location | Issue | Risk Level |\n",
     "|---|----------|-------|------------|\n",
     "| 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "For each security issue above, add a detail block:\n\n",
+    "#### Security Issue N: <short title>\n",
+    "**Risk:** Describe the attack vector or vulnerability.\n",
+    "**Remediation:** Provide a concrete fix with code snippet if applicable.\n\n",
+    "### ✅ What Looks Good\n\n",
+    "List 2-3 positive aspects of the code (good patterns, clean structure, proper error handling, etc.).\n\n",
     "Rules:\n",
-    "- Sort rows: Critical first, then High, Medium, Low\n",
+    "- Sort table rows: Critical first, then High, Medium, Low\n",
+    "- EVERY table row MUST have a matching detail block below its table\n",
     "- If a section has no findings, write: | — | — | No issues found. | — |\n",
     "- Location always in backticks\n",
     "- top_files: files with most findings, max 3\n",
-    "- risk_score: highest severity present; none if no findings\n\n",
+    "- risk_score: highest severity present; none if no findings\n",
+    "- Be specific: reference actual variable names, function names, and line numbers from the diff\n\n",
     "Diff to review:\n```diff\n"
 );
 
@@ -117,7 +134,7 @@ async fn single_round_review(
             content: format!("{SINGLE_ROUND_USER_TEMPLATE}{diff}\n```"),
         },
     ];
-    match vllm::chat_complete(&messages, model, 2048, 0.1, client, cfg).await {
+    match vllm::chat_complete(&messages, model, 4096, 0.2, client, cfg).await {
         Ok(text) => Some(text),
         Err(e) => {
             eprintln!("Warning: single-round review failed: {e}");
@@ -147,7 +164,7 @@ async fn multi_round_review(
                 content: chunk_user_prompt(chunk),
             },
         ];
-        match vllm::chat_complete(&messages, model, 1024, 0.1, client, cfg).await {
+        match vllm::chat_complete(&messages, model, 2048, 0.1, client, cfg).await {
             Ok(text) => reviews.push(text),
             Err(e) => {
                 eprintln!("Warning: Chunk {} error: {e}", i + 1);
@@ -179,8 +196,11 @@ async fn multi_round_review(
 }
 
 const SUMMARIZE_SYSTEM_PROMPT: &str =
-    "You are a senior software engineer performing a pull request code review. \
-     Be precise, actionable, and output only the requested format. No preamble, no conclusion.";
+    "You are a senior software engineer performing a thorough pull request code review. \
+     Your goal is to help the author ship better code by providing detailed, actionable feedback. \
+     For each finding, explain WHY it matters and HOW to fix it. \
+     Be constructive: acknowledge good patterns alongside issues. \
+     Output the requested format.";
 
 const SUMMARIZE_USER_TEMPLATE: &str = concat!(
     "Review these findings and output exactly this structure:\n\n",
@@ -195,21 +215,35 @@ const SUMMARIZE_USER_TEMPLATE: &str = concat!(
     "risk_score: <critical|high|medium|low|none>\n",
     "---\n\n",
     "## 🔍 AI Code Review\n\n",
+    "### 📋 Summary\n\n",
+    "Write 2-4 sentences summarizing the overall changes, their purpose, and the general code quality.\n\n",
     "### 🛠 Code Quality Issues\n\n",
     "| # | Location | Issue | Severity |\n",
     "|---|----------|-------|----------|\n",
     "| 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "For each issue above, add a detail block:\n\n",
+    "#### Issue N: <short title>\n",
+    "**Why it matters:** Explain the impact (bug risk, performance, maintainability).\n",
+    "**Suggestion:** Provide a concrete fix or improvement, with a short code snippet if helpful.\n\n",
     "### 🔒 Security Issues\n\n",
     "| # | Location | Issue | Risk Level |\n",
     "|---|----------|-------|------------|\n",
     "| 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "For each security issue above, add a detail block:\n\n",
+    "#### Security Issue N: <short title>\n",
+    "**Risk:** Describe the attack vector or vulnerability.\n",
+    "**Remediation:** Provide a concrete fix with code snippet if applicable.\n\n",
+    "### ✅ What Looks Good\n\n",
+    "List 2-3 positive aspects of the code (good patterns, clean structure, proper error handling, etc.).\n\n",
     "Rules:\n",
-    "- Sort rows: Critical first, then High, Medium, Low\n",
+    "- Sort table rows: Critical first, then High, Medium, Low\n",
+    "- EVERY table row MUST have a matching detail block below its table\n",
     "- Deduplicate similar findings across chunks\n",
     "- If a section has no findings, write: | — | — | No issues found. | — |\n",
     "- Location always in backticks\n",
     "- top_files: files with most findings, max 3\n",
-    "- risk_score: highest severity present; none if no findings\n\n",
+    "- risk_score: highest severity present; none if no findings\n",
+    "- Be specific: reference actual variable names, function names, and line numbers from the diff\n\n",
     "Findings collected from all diff chunks:\n\n"
 );
 
@@ -235,7 +269,7 @@ pub async fn summarize_review(
             content: format!("{SUMMARIZE_USER_TEMPLATE}{combined}"),
         },
     ];
-    match vllm::chat_complete(&messages, model, 2048, 0.2, client, cfg).await {
+    match vllm::chat_complete(&messages, model, 4096, 0.3, client, cfg).await {
         Ok(text) => Some(text),
         Err(e) => {
             eprintln!("Warning: summarization failed: {e}");
@@ -300,6 +334,10 @@ mod tests {
             "system prompt must state the task"
         );
         assert!(
+            SUMMARIZE_SYSTEM_PROMPT.contains("actionable feedback"),
+            "system prompt must encourage detailed feedback"
+        );
+        assert!(
             !SUMMARIZE_SYSTEM_PROMPT.contains("## Code Quality Issues"),
             "format instructions must be in the user message, not system prompt"
         );
@@ -346,7 +384,27 @@ mod tests {
         assert!(SINGLE_ROUND_USER_TEMPLATE.contains("Security Issues"));
         assert!(SINGLE_ROUND_USER_TEMPLATE.contains("Severity"));
         assert!(SINGLE_ROUND_USER_TEMPLATE.contains("Risk Level"));
-        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("Sort rows: Critical first"));
+        assert!(SINGLE_ROUND_USER_TEMPLATE.contains("Sort table rows: Critical first"));
+    }
+
+    #[test]
+    fn single_round_template_contains_detail_sections() {
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE.contains("Summary"),
+            "template must include a Summary section"
+        );
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE.contains("Why it matters:"),
+            "template must ask for impact explanation"
+        );
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE.contains("Suggestion:"),
+            "template must ask for actionable suggestions"
+        );
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE.contains("What Looks Good"),
+            "template must include positive highlights section"
+        );
     }
 
     #[test]
@@ -421,6 +479,10 @@ mod tests {
                 "system prompt must state the task"
             );
             assert!(
+                prompt.contains("actionable feedback"),
+                "system prompt must encourage detailed feedback"
+            );
+            assert!(
                 !prompt.contains("markdown table"),
                 "format instructions belong in user prompts, not system prompts"
             );
@@ -472,6 +534,43 @@ mod tests {
         assert!(
             SUMMARIZE_USER_TEMPLATE.contains("Findings collected from all diff chunks:"),
             "summarize template must end with the findings section header"
+        );
+    }
+
+    #[test]
+    fn summarize_template_contains_detail_sections() {
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("Summary"),
+            "summarize template must include a Summary section"
+        );
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("Why it matters:"),
+            "summarize template must ask for impact explanation"
+        );
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("Suggestion:"),
+            "summarize template must ask for actionable suggestions"
+        );
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("What Looks Good"),
+            "summarize template must include positive highlights section"
+        );
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("Remediation:"),
+            "summarize template must ask for security remediation"
+        );
+    }
+
+    #[test]
+    fn templates_require_detail_blocks_for_every_finding() {
+        assert!(
+            SINGLE_ROUND_USER_TEMPLATE
+                .contains("EVERY table row MUST have a matching detail block"),
+            "single-round template must enforce detail blocks"
+        );
+        assert!(
+            SUMMARIZE_USER_TEMPLATE.contains("EVERY table row MUST have a matching detail block"),
+            "summarize template must enforce detail blocks"
         );
     }
 }
