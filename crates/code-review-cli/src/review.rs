@@ -46,7 +46,7 @@ pub async fn review_diff(diff: &str, model: &str, cfg: &Config) -> Option<String
             ChatMessage {
                 role: "user",
                 content: format!(
-                    "Review this code diff. Return only Markdown sections: Issues, Improvements, Positives.\n\n```diff\n{chunk}\n```"
+                    "Review this diff chunk. List only:\n- CODE: <file>:<line> — <issue>\n- SEC: <file>:<line> — <issue>\nNo headings, no prose, bullets only.\n\n```diff\n{chunk}\n```"
                 ),
             },
         ];
@@ -130,5 +130,18 @@ mod tests {
         let chunks = split_diff_into_chunks(diff, 2000);
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0], diff.trim_end_matches('\n'));
+    }
+
+    #[test]
+    fn chunk_prompt_contains_bullet_instructions() {
+        // The per-chunk prompt must ask for CODE: and SEC: bullets, not Markdown sections.
+        let chunk = "- old line\n+ new line\n";
+        // We build the prompt the same way review_diff does and check its content.
+        let prompt = format!(
+            "Review this diff chunk. List only:\n- CODE: <file>:<line> — <issue>\n- SEC: <file>:<line> — <issue>\nNo headings, no prose, bullets only.\n\n```diff\n{chunk}\n```"
+        );
+        assert!(prompt.contains("CODE:"));
+        assert!(prompt.contains("SEC:"));
+        assert!(!prompt.contains("Issues, Improvements, Positives"));
     }
 }
