@@ -79,24 +79,22 @@ jobs:
 
       - name: Build binaries (native)
         if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: cargo build --release --bin code-review-cli --bin docgen --target ${{ matrix.target }}
+        run: cargo build --release --bin code-review-cli --target ${{ matrix.target }}
 
       - name: Build binaries (cross)
         if: matrix.target != 'x86_64-unknown-linux-gnu'
         env:
           OPENSSL_VENDORED: "1"
           OPENSSL_STATIC: "1"
-        run: cross build --release --bin code-review-cli --bin docgen --target ${{ matrix.target }}
+        run: cross build --release --bin code-review-cli --target ${{ matrix.target }}
 
       - name: Rename binaries
         run: |
           cp target/${{ matrix.target }}/release/code-review-cli code-review-cli-${{ matrix.platform }}
-          cp target/${{ matrix.target }}/release/docgen docgen-${{ matrix.platform }}
 
       - name: Generate SHA-256 checksums
         run: |
           sha256sum code-review-cli-${{ matrix.platform }} > code-review-cli-${{ matrix.platform }}.sha256
-          sha256sum docgen-${{ matrix.platform }} > docgen-${{ matrix.platform }}.sha256
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
@@ -104,8 +102,6 @@ jobs:
           files: |
             code-review-cli-${{ matrix.platform }}
             code-review-cli-${{ matrix.platform }}.sha256
-            docgen-${{ matrix.platform }}
-            docgen-${{ matrix.platform }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -135,19 +131,17 @@ jobs:
       - name: Build binaries
         env:
           OPENSSL_VENDORED: "1"
-        run: cargo build --release --bin code-review-cli --bin docgen --target ${{ matrix.target }}
+        run: cargo build --release --bin code-review-cli --target ${{ matrix.target }}
 
       - name: Rename binaries
         run: |
           cp target/${{ matrix.target }}/release/code-review-cli code-review-cli-${{ matrix.platform }}
-          cp target/${{ matrix.target }}/release/docgen docgen-${{ matrix.platform }}
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
           files: |
             code-review-cli-${{ matrix.platform }}
-            docgen-${{ matrix.platform }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -169,18 +163,16 @@ jobs:
       - name: Build binaries
         env:
           RUSTFLAGS: "-C link-arg=advapi32.lib"
-        run: cargo build --release --bin code-review-cli --bin docgen
+        run: cargo build --release --bin code-review-cli
 
       - name: Rename binaries
         run: |
           cp target/release/code-review-cli.exe code-review-cli-windows-amd64.exe
-          cp target/release/docgen.exe docgen-windows-amd64.exe
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3.0.0
         with:
           files: |
             code-review-cli-windows-amd64.exe
-            docgen-windows-amd64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
