@@ -90,6 +90,47 @@ pub async fn fetch_pr_diff(cfg: &GithubConfig) -> Result<String, String> {
     Ok(diff)
 }
 
+/// Post the review text as a PR comment via the GitHub REST API.
+pub async fn post_pr_comment(
+    review: &str,
+    repo: &str,
+    pr_number: u64,
+    token: &str,
+) -> Result<(), String> {
+    const MAX_LEN: usize = 60_000;
+    let mut body = review.to_string();
+    if body.len() > MAX_LEN {
+        let cutoff = MAX_LEN - 50;
+        let safe_cut = body
+            .char_indices()
+            .map(|(i, _)| i)
+            .take_while(|&i| i <= cutoff)
+            .last()
+            .unwrap_or(0);
+        body.truncate(safe_cut);
+        body.push_str("\n\n[Truncated due to GitHub comment size limit]");
+    }
+
+    let client = reqwest::Client::new();
+    let url = format!("https://api.github.com/repos/{repo}/issues/{pr_number}/comments");
+    let resp = client
+        .post(&url)
+        .header("Authorization", format!("token {token}"))
+        .header("User-Agent", "code-review-cli")
+        .json(&serde_json::json!({ "body": body }))
+        .send()
+        .await
+        .map_err(|e| format!("HTTP request failed: {e}"))?;
+
+    if resp.status().is_success() {
+        Ok(())
+    } else {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        Err(format!("GitHub API returned {status}: {body}"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

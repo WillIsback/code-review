@@ -2,7 +2,7 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 #[derive(Debug, Error, Diagnostic)]
-pub enum CoreError {
+pub enum AppError {
     #[error("vLLM server unreachable at {url}")]
     #[diagnostic(help("Check that your vLLM server is running and VLLM_BASE_URL is correct"))]
     VllmUnreachable { url: String },

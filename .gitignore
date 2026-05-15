@@ -4,3 +4,6 @@ bin/
 actions-runner/
 node_modules/
 docs/superpowers/
+docs/.obsidian
+docs/issue
+.github/agents

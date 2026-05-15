@@ -1,5 +1,5 @@
 [package]
-name    = "code-review-cli"
+name = "code-review-cli"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,12 +8,15 @@ name = "code-review-cli"
 path = "src/main.rs"
 
 [dependencies]
-toolkit-core = { path = "../toolkit-core" }
-tokio        = { workspace = true }
-reqwest      = { workspace = true }
-serde_json   = { workspace = true }
-octocrab     = "0.41"
-dotenvy      = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+miette = { workspace = true }
+dotenvy = { workspace = true }
+octocrab = "0.41"
+git2 = { version = "0.20", features = ["vendored-openssl"] }
 
 [dev-dependencies]
 serial_test = "3"
