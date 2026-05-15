@@ -1,7 +1,10 @@
+mod config;
+mod error;
 mod github;
 mod review;
+mod vllm;
 
-use toolkit_core::{config::Config, vllm};
+use config::Config;
 
 #[tokio::main]
 async fn main() {
@@ -64,7 +67,7 @@ async fn main() {
     println!("{review_text}");
 
     // Post comment
-    match review::post_pr_comment(&review_text, &gh.repository, gh.pr_number, &gh.token).await {
+    match github::post_pr_comment(&review_text, &gh.repository, gh.pr_number, &gh.token).await {
         Ok(()) => println!("Review comment posted successfully."),
         Err(e) => {
             eprintln!("Review generated but comment posting failed: {e}");

@@ -4,7 +4,6 @@ use std::env;
 pub struct Config {
     pub vllm_base_url: String,
     pub vllm_api_key: String,
-    pub batch_size: usize,
     pub connect_timeout_secs: u64,
     pub vllm_timeout_secs: u64,
 }
@@ -15,10 +14,6 @@ impl Config {
             vllm_base_url: env::var("VLLM_BASE_URL")
                 .unwrap_or_else(|_| "http://localhost:30000/v1".to_string()),
             vllm_api_key: env::var("VLLM_API_KEY").unwrap_or_else(|_| "none".to_string()),
-            batch_size: env::var("BATCH_SIZE")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(4),
             connect_timeout_secs: 5,
             vllm_timeout_secs: env::var("VLLM_TIMEOUT_SECS")
                 .ok()
@@ -61,11 +56,9 @@ mod tests {
     fn defaults_when_env_absent() {
         unsafe {
             std::env::remove_var("VLLM_BASE_URL");
-            std::env::remove_var("BATCH_SIZE");
         }
         let cfg = Config::from_env();
         assert_eq!(cfg.vllm_base_url, "http://localhost:30000/v1");
-        assert_eq!(cfg.batch_size, 4);
     }
 
     #[test]
@@ -73,14 +66,11 @@ mod tests {
     fn reads_env_vars() {
         unsafe {
             std::env::set_var("VLLM_BASE_URL", "http://custom:9000/v1");
-            std::env::set_var("BATCH_SIZE", "8");
         }
         let cfg = Config::from_env();
         assert_eq!(cfg.vllm_base_url, "http://custom:9000/v1");
-        assert_eq!(cfg.batch_size, 8);
         unsafe {
             std::env::remove_var("VLLM_BASE_URL");
-            std::env::remove_var("BATCH_SIZE");
         }
     }
 
