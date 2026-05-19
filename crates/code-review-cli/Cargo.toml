@@ -16,7 +16,7 @@ thiserror = { workspace = true }
 miette = { workspace = true }
 dotenvy = { workspace = true }
 octocrab = "0.41"
-git2 = { version = "0.20", features = ["vendored-openssl"] }
+git2 = { version = "0.21", features = ["vendored-openssl"] }
 
 [dev-dependencies]
 serial_test = "3"
