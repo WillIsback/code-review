@@ -42,16 +42,15 @@ const SINGLE_ROUND_SYSTEM_PROMPT: &str =
      Your goal is to help the author ship better code by providing detailed, actionable feedback. \
      For each finding, explain WHY it matters and HOW to fix it. \
      Be constructive: acknowledge good patterns alongside issues. \
-     Output the requested format.";
+     Output the requested format. \
+     Only report issues you can directly verify from the provided code. Do NOT speculate about behavior in code you cannot see. \
+     Do NOT invent API features, language semantics, or framework behaviors you are not certain about. \
+     If the code is correct and well-written, reporting fewer or zero findings is better than inflating issues.";
 
 const SINGLE_ROUND_USER_TEMPLATE: &str = concat!(
     "Review this diff and output exactly this structure:\n\n",
     "---\n",
-    "findings:\n",
-    "  critical: <count>\n",
-    "  high: <count>\n",
-    "  medium: <count>\n",
-    "  low: <count>\n",
+    "findings_total: <count or 0 if no issues found>\n",
     "top_files:\n",
     "  - <up to 3 files with most findings>\n",
     "risk_score: <critical|high|medium|low|none>\n",
@@ -62,7 +61,7 @@ const SINGLE_ROUND_USER_TEMPLATE: &str = concat!(
     "### 🛠 Code Quality Issues\n\n",
     "| # | Location | Issue | Severity |\n",
     "|---|----------|-------|----------|\n",
-    "| 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "| <n> | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
     "For each issue above, add a detail block:\n\n",
     "#### Issue N: <short title>\n",
     "**Why it matters:** Explain the impact (bug risk, performance, maintainability).\n",
@@ -70,7 +69,7 @@ const SINGLE_ROUND_USER_TEMPLATE: &str = concat!(
     "### 🔒 Security Issues\n\n",
     "| # | Location | Issue | Risk Level |\n",
     "|---|----------|-------|------------|\n",
-    "| 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "| <n> | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
     "For each security issue above, add a detail block:\n\n",
     "#### Security Issue N: <short title>\n",
     "**Risk:** Describe the attack vector or vulnerability.\n",
@@ -84,7 +83,10 @@ const SINGLE_ROUND_USER_TEMPLATE: &str = concat!(
     "- Location always in backticks\n",
     "- top_files: files with most findings, max 3\n",
     "- risk_score: highest severity present; none if no findings\n",
-    "- Be specific: reference actual variable names, function names, and line numbers from the diff\n\n",
+    "- Be specific: reference actual variable names, function names, and line numbers from the diff\n",
+    "- An empty findings table is a valid and positive outcome when code quality is good.\n",
+    "- Do NOT report issues based on assumptions about external APIs, frameworks, or language features you cannot verify from the diff.\n",
+    "- Prefer fewer high-confidence findings over many speculative ones.\n\n",
     "Diff to review:\n```diff\n"
 );
 
@@ -200,16 +202,15 @@ const SUMMARIZE_SYSTEM_PROMPT: &str =
      Your goal is to help the author ship better code by providing detailed, actionable feedback. \
      For each finding, explain WHY it matters and HOW to fix it. \
      Be constructive: acknowledge good patterns alongside issues. \
-     Output the requested format.";
+     Output the requested format. \
+     Only report issues you can directly verify from the provided code. Do NOT speculate about behavior in code you cannot see. \
+     Do NOT invent API features, language semantics, or framework behaviors you are not certain about. \
+     If the code is correct and well-written, reporting fewer or zero findings is better than inflating issues.";
 
 const SUMMARIZE_USER_TEMPLATE: &str = concat!(
     "Review these findings and output exactly this structure:\n\n",
     "---\n",
-    "findings:\n",
-    "  critical: <count>\n",
-    "  high: <count>\n",
-    "  medium: <count>\n",
-    "  low: <count>\n",
+    "findings_total: <count or 0 if no issues found>\n",
     "top_files:\n",
     "  - <up to 3 files with most findings>\n",
     "risk_score: <critical|high|medium|low|none>\n",
@@ -220,7 +221,7 @@ const SUMMARIZE_USER_TEMPLATE: &str = concat!(
     "### 🛠 Code Quality Issues\n\n",
     "| # | Location | Issue | Severity |\n",
     "|---|----------|-------|----------|\n",
-    "| 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "| <n> | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
     "For each issue above, add a detail block:\n\n",
     "#### Issue N: <short title>\n",
     "**Why it matters:** Explain the impact (bug risk, performance, maintainability).\n",
@@ -228,7 +229,7 @@ const SUMMARIZE_USER_TEMPLATE: &str = concat!(
     "### 🔒 Security Issues\n\n",
     "| # | Location | Issue | Risk Level |\n",
     "|---|----------|-------|------------|\n",
-    "| 1 | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "| <n> | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
     "For each security issue above, add a detail block:\n\n",
     "#### Security Issue N: <short title>\n",
     "**Risk:** Describe the attack vector or vulnerability.\n",
@@ -243,7 +244,10 @@ const SUMMARIZE_USER_TEMPLATE: &str = concat!(
     "- Location always in backticks\n",
     "- top_files: files with most findings, max 3\n",
     "- risk_score: highest severity present; none if no findings\n",
-    "- Be specific: reference actual variable names, function names, and line numbers from the diff\n\n",
+    "- Be specific: reference actual variable names, function names, and line numbers from the diff\n",
+    "- An empty findings table is a valid and positive outcome when code quality is good.\n",
+    "- Do NOT report issues based on assumptions about external APIs, frameworks, or language features you cannot verify from the diff.\n",
+    "- Prefer fewer high-confidence findings over many speculative ones.\n\n",
     "Findings collected from all diff chunks:\n\n"
 );
 
@@ -381,8 +385,8 @@ mod tests {
     #[test]
     fn single_round_template_contains_yaml_frontmatter() {
         assert!(
-            SINGLE_ROUND_USER_TEMPLATE.contains("findings:"),
-            "template must include YAML findings key"
+            SINGLE_ROUND_USER_TEMPLATE.contains("findings_total:"),
+            "template must include YAML findings_total key"
         );
         assert!(
             SINGLE_ROUND_USER_TEMPLATE.contains("risk_score:"),
@@ -451,8 +455,8 @@ mod tests {
     #[test]
     fn summarize_template_contains_yaml_frontmatter() {
         assert!(
-            SUMMARIZE_USER_TEMPLATE.contains("findings:"),
-            "summarize template must include YAML findings key"
+            SUMMARIZE_USER_TEMPLATE.contains("findings_total:"),
+            "summarize template must include YAML findings_total key"
         );
         assert!(
             SUMMARIZE_USER_TEMPLATE.contains("risk_score:"),
@@ -531,5 +535,49 @@ mod tests {
             SUMMARIZE_USER_TEMPLATE.contains("EVERY table row MUST have a matching detail block"),
             "summarize template must enforce detail blocks"
         );
+    }
+
+    #[test]
+    fn system_prompts_contain_factual_guards() {
+        for prompt in &[SINGLE_ROUND_SYSTEM_PROMPT, SUMMARIZE_SYSTEM_PROMPT] {
+            assert!(
+                prompt
+                    .contains("Only report issues you can directly verify from the provided code"),
+                "system prompt must require verifiable findings"
+            );
+            assert!(
+                prompt.contains("Do NOT speculate about behavior in code you cannot see"),
+                "system prompt must forbid speculation"
+            );
+            assert!(
+                prompt.contains(
+                    "Do NOT invent API features, language semantics, or framework behaviors"
+                ),
+                "system prompt must forbid inventing behaviors"
+            );
+            assert!(
+                prompt.contains("reporting fewer or zero findings is better than inflating issues"),
+                "system prompt must discourage inflating issues"
+            );
+        }
+    }
+
+    #[test]
+    fn user_templates_contain_anti_filling_rules() {
+        for template in &[SINGLE_ROUND_USER_TEMPLATE, SUMMARIZE_USER_TEMPLATE] {
+            assert!(
+                template.contains("An empty findings table is a valid and positive outcome"),
+                "template must allow empty findings"
+            );
+            assert!(
+                template.contains("Do NOT report issues based on assumptions about external APIs"),
+                "template must forbid assumption-based findings"
+            );
+            assert!(
+                template
+                    .contains("Prefer fewer high-confidence findings over many speculative ones"),
+                "template must prefer quality over quantity"
+            );
+        }
     }
 }
