@@ -89,8 +89,8 @@ const SINGLE_ROUND_USER_TEMPLATE: &str = concat!(
 );
 
 /// Review a diff using the appropriate strategy:
-/// - 1 file  → single round (one direct `chat_complete` call)
-/// - N files → two rounds (per-chunk bullets + reasoning summarization)
+/// - 1 file  -> single round (one direct `chat_complete` call)
+/// - N files -> two rounds (per-chunk bullets + verification against source)
 pub async fn review_diff(
     diff: &str,
     model: &str,
@@ -183,17 +183,71 @@ async fn multi_round_review(
         .cloned()
         .collect();
 
-    match summarize_review(&valid_reviews, model, client, cfg).await {
-        Some(summary) => Some(summary),
+    // Round 2: verify findings against source code, fallback to summarize
+    let verified = verify_findings(&valid_reviews, diff, model, client, cfg).await;
+    match verified {
+        Some(report) => Some(report),
         None => {
-            eprintln!("Warning: summarization failed, falling back to raw chunk output.");
-            Some(format!(
-                "> ⚠️ Summarization failed — raw chunk output below.\n\n{}",
-                reviews.join("\n\n---\n\n")
-            ))
+            // Fallback to summarization if verification fails
+            match summarize_review(&valid_reviews, model, client, cfg).await {
+                Some(summary) => Some(summary),
+                None => {
+                    eprintln!("Warning: summarization also failed, falling back to raw output.");
+                    Some(format!(
+                        "> ⚠️ Verification and summarization failed — raw chunk output below.\n\n{}",
+                        reviews.join("\n\n---\n\n")
+                    ))
+                }
+            }
         }
     }
 }
+
+const VERIFY_SYSTEM_PROMPT: &str =
+    "You are a senior software engineer verifying code review findings against actual source code. \
+     Your job is to FILTER, not to ADD. For each finding, determine if it is correct based on the \
+     evidence in the source code provided. Be skeptical of findings that make claims about APIs, \
+     frameworks, or language features that cannot be verified from the code. \
+     Reject any finding that is speculative or factually incorrect.";
+
+const VERIFY_USER_TEMPLATE: &str = concat!(
+    "Verify each finding below against the source code provided.\n\n",
+    "For each finding, classify as:\n",
+    "- CONFIRMED -- the issue is real and verifiable in the source code\n",
+    "- REJECTED -- the issue is incorrect, speculative, or based on wrong assumptions\n",
+    "- DOWNGRADED -- the issue exists but the severity is inflated (specify correct severity)\n\n",
+    "Then produce the final report containing ONLY confirmed (and downgraded) findings,\n",
+    "using this exact structure:\n\n",
+    "---\n",
+    "findings_total: <count of confirmed + downgraded findings, or 0>\n",
+    "top_files:\n",
+    "  - <up to 3 files with most confirmed findings>\n",
+    "risk_score: <critical|high|medium|low|none>\n",
+    "---\n\n",
+    "## 🔍 AI Code Review\n\n",
+    "### 📋 Summary\n",
+    "Write 2-4 sentences summarizing the changes and verified findings.\n\n",
+    "### 🛠 Code Quality Issues\n",
+    "| # | Location | Issue | Severity |\n",
+    "|---|----------|-------|----------|\n",
+    "(only confirmed/downgraded findings)\n\n",
+    "For each confirmed issue:\n",
+    "#### Issue N: <title>\n",
+    "**Verified:** Explain what in the source code confirms this issue.\n",
+    "**Suggestion:** Concrete fix.\n\n",
+    "### 🔒 Security Issues\n",
+    "| # | Location | Issue | Risk Level |\n",
+    "|---|----------|-------|------------|\n",
+    "(only confirmed/downgraded findings)\n\n",
+    "### ✅ What Looks Good\n",
+    "List 2-3 positive aspects.\n\n",
+    "Rules:\n",
+    "- Do NOT add new findings -- only verify the ones provided\n",
+    "- REJECTED findings must NOT appear in the final report\n",
+    "- An empty table is a valid outcome if all findings were rejected\n",
+    "- Sort confirmed findings: Critical first, then High, Medium, Low\n\n",
+    "[FINDINGS TO VERIFY]\n\n",
+);
 
 const SUMMARIZE_SYSTEM_PROMPT: &str =
     "You are a senior software engineer performing a thorough pull request code review. \
@@ -247,6 +301,57 @@ const SUMMARIZE_USER_TEMPLATE: &str = concat!(
     "Findings collected from all diff chunks:\n\n"
 );
 
+/// Verify Round 1 findings against actual source code.
+/// Returns the verified review report, or None on failure.
+pub async fn verify_findings(
+    chunk_reviews: &[String],
+    diff: &str,
+    model: &str,
+    client: &reqwest::Client,
+    cfg: &Config,
+) -> Option<String> {
+    if chunk_reviews.is_empty() {
+        return None;
+    }
+
+    // Read source files from filesystem
+    let file_paths = crate::source::extract_modified_files(diff);
+    let source_files = crate::source::read_source_files(&file_paths);
+
+    if source_files.is_empty() {
+        eprintln!("No source files readable, falling back to summarization.");
+        return None; // caller will fall back to summarize_review()
+    }
+
+    let source_context = crate::source::format_source_context(&source_files);
+    let combined_findings = chunk_reviews.join("\n\n---\n\n");
+
+    let messages = vec![
+        ChatMessage {
+            role: "system",
+            content: VERIFY_SYSTEM_PROMPT.to_string(),
+        },
+        ChatMessage {
+            role: "user",
+            content: format!("{VERIFY_USER_TEMPLATE}{combined_findings}{source_context}"),
+        },
+    ];
+
+    println!(
+        "Verifying {} findings against {} source files...",
+        chunk_reviews.len(),
+        source_files.len()
+    );
+
+    match vllm::chat_complete(&messages, model, 4096, 0.1, client, cfg).await {
+        Ok(text) => Some(text),
+        Err(e) => {
+            eprintln!("Warning: verification failed: {e}");
+            None // caller will fall back to summarize_review()
+        }
+    }
+}
+
 /// Feed all chunk bullet outputs into an LLM call and return the
 /// structured two-section Markdown summary.
 pub async fn summarize_review(
@@ -269,7 +374,7 @@ pub async fn summarize_review(
             content: format!("{SUMMARIZE_USER_TEMPLATE}{combined}"),
         },
     ];
-    match vllm::chat_complete(&messages, model, 4096, 0.3, client, cfg).await {
+    match vllm::chat_complete(&messages, model, 4096, 0.1, client, cfg).await {
         Ok(text) => Some(text),
         Err(e) => {
             eprintln!("Warning: summarization failed: {e}");
@@ -531,5 +636,20 @@ mod tests {
             SUMMARIZE_USER_TEMPLATE.contains("EVERY table row MUST have a matching detail block"),
             "summarize template must enforce detail blocks"
         );
+    }
+
+    #[test]
+    fn verify_system_prompt_is_skeptical() {
+        assert!(VERIFY_SYSTEM_PROMPT.contains("FILTER"));
+        assert!(VERIFY_SYSTEM_PROMPT.contains("skeptical"));
+        assert!(!VERIFY_SYSTEM_PROMPT.contains("thorough"));
+    }
+
+    #[test]
+    fn verify_template_has_classification() {
+        assert!(VERIFY_USER_TEMPLATE.contains("CONFIRMED"));
+        assert!(VERIFY_USER_TEMPLATE.contains("REJECTED"));
+        assert!(VERIFY_USER_TEMPLATE.contains("DOWNGRADED"));
+        assert!(VERIFY_USER_TEMPLATE.contains("[FINDINGS TO VERIFY]"));
     }
 }
