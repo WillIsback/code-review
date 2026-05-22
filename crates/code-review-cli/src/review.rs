@@ -37,6 +37,85 @@ pub fn split_diff_into_chunks(diff: &str, max_words: usize) -> Vec<String> {
     chunks
 }
 
+/// Split a diff string into per-file sections.
+/// Returns Vec<(filename, file_diff)> parsed from `# File:` headers.
+pub fn split_diff_by_file(diff: &str) -> Vec<(String, String)> {
+    if diff.trim().is_empty() {
+        return vec![];
+    }
+
+    let mut results: Vec<(String, String)> = Vec::new();
+    let marker = "# File: ";
+
+    // Find all positions of "# File: " in the diff
+    let mut positions: Vec<usize> = Vec::new();
+    let mut search_from = 0;
+    while let Some(pos) = diff[search_from..].find(marker) {
+        positions.push(search_from + pos);
+        search_from = search_from + pos + marker.len();
+    }
+
+    if positions.is_empty() {
+        return vec![];
+    }
+
+    for (idx, &start) in positions.iter().enumerate() {
+        let header_start = start + marker.len();
+        let line_end = diff[header_start..]
+            .find('\n')
+            .map(|p| header_start + p)
+            .unwrap_or(diff.len());
+        let filename = diff[header_start..line_end].trim().to_string();
+
+        let body_start = line_end;
+        let body_end = if idx + 1 < positions.len() {
+            positions[idx + 1]
+        } else {
+            diff.len()
+        };
+        let body = diff[body_start..body_end].to_string();
+
+        results.push((filename, body));
+    }
+
+    results
+}
+
+/// Group per-file diffs into chunks that respect file boundaries.
+/// No file is ever split across chunks. Files exceeding max_words go solo.
+pub fn group_files_into_chunks(files: &[(String, String)], max_words: usize) -> Vec<String> {
+    if files.is_empty() {
+        return vec![];
+    }
+
+    let mut chunks: Vec<String> = Vec::new();
+    let mut current_chunk = String::new();
+    let mut current_words = 0usize;
+
+    for (name, body) in files {
+        let file_text = format!("# File: {name}\n{body}");
+        let file_words = file_text.split_whitespace().count();
+
+        if current_words > 0 && current_words + file_words > max_words {
+            chunks.push(current_chunk.trim().to_string());
+            current_chunk = String::new();
+            current_words = 0;
+        }
+
+        if !current_chunk.is_empty() {
+            current_chunk.push_str("\n\n");
+        }
+        current_chunk.push_str(&file_text);
+        current_words += file_words;
+    }
+
+    if !current_chunk.is_empty() {
+        chunks.push(current_chunk.trim().to_string());
+    }
+
+    chunks
+}
+
 const SINGLE_ROUND_SYSTEM_PROMPT: &str =
     "You are a senior software engineer performing a thorough pull request code review. \
      Your goal is to help the author ship better code by providing detailed, actionable feedback. \
@@ -149,7 +228,12 @@ async fn multi_round_review(
     client: &reqwest::Client,
     cfg: &Config,
 ) -> Option<String> {
-    let chunks = split_diff_into_chunks(diff, 2000);
+    let files = split_diff_by_file(diff);
+    let chunks = if files.is_empty() {
+        split_diff_into_chunks(diff, 2000) // fallback for non-standard diff format
+    } else {
+        group_files_into_chunks(&files, 2000)
+    };
     let mut reviews = vec![];
 
     for (i, chunk) in chunks.iter().enumerate() {
@@ -531,5 +615,54 @@ mod tests {
             SUMMARIZE_USER_TEMPLATE.contains("EVERY table row MUST have a matching detail block"),
             "summarize template must enforce detail blocks"
         );
+    }
+
+    #[test]
+    fn split_by_file_parses_headers() {
+        let diff = "\n\n# File: src/a.rs\n+ line a\n\n# File: src/b.rs\n+ line b\n";
+        let files = split_diff_by_file(diff);
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].0, "src/a.rs");
+        assert_eq!(files[1].0, "src/b.rs");
+        assert!(files[0].1.contains("+ line a"));
+        assert!(files[1].1.contains("+ line b"));
+    }
+
+    #[test]
+    fn split_by_file_handles_empty() {
+        assert!(split_diff_by_file("").is_empty());
+        assert!(split_diff_by_file("   ").is_empty());
+    }
+
+    #[test]
+    fn split_by_file_single_file() {
+        let diff = "\n\n# File: src/main.rs\n+ hello\n+ world\n";
+        let files = split_diff_by_file(diff);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].0, "src/main.rs");
+    }
+
+    #[test]
+    fn group_files_respects_boundaries() {
+        let files = vec![
+            ("a.rs".to_string(), "word ".repeat(800)),
+            ("b.rs".to_string(), "word ".repeat(800)),
+            ("c.rs".to_string(), "word ".repeat(800)),
+        ];
+        let chunks = group_files_into_chunks(&files, 2000);
+        // a.rs + b.rs = 1600 words fits in one chunk
+        // c.rs would make 2400, so c.rs goes to chunk 2
+        assert_eq!(chunks.len(), 2);
+        assert!(chunks[0].contains("# File: a.rs"));
+        assert!(chunks[0].contains("# File: b.rs"));
+        assert!(chunks[1].contains("# File: c.rs"));
+    }
+
+    #[test]
+    fn group_files_large_single_file_solo() {
+        let files = vec![("big.rs".to_string(), "word ".repeat(3000))];
+        let chunks = group_files_into_chunks(&files, 2000);
+        assert_eq!(chunks.len(), 1);
+        assert!(chunks[0].contains("# File: big.rs"));
     }
 }
