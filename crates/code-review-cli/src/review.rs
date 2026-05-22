@@ -84,7 +84,9 @@ const SINGLE_ROUND_USER_TEMPLATE: &str = concat!(
     "- Location always in backticks\n",
     "- top_files: files with most findings, max 3\n",
     "- risk_score: highest severity present; none if no findings\n",
-    "- Be specific: reference actual variable names, function names, and line numbers from the diff\n\n",
+    "- Be specific: reference actual variable names, function names, and line numbers from the diff\n",
+    "- Source files are provided after the diff for verification context only. Do NOT review unchanged code in source files.\n",
+    "- Use source files to verify whether issues in the diff are real — reference specific line numbers when confirming issues.\n\n",
     "Diff to review:\n```diff\n"
 );
 
@@ -124,6 +126,12 @@ async fn single_round_review(
     client: &reqwest::Client,
     cfg: &Config,
 ) -> Option<String> {
+    // Load source files for context
+    let file_paths = crate::source::extract_modified_files(diff);
+    let source_files = crate::source::read_source_files(&file_paths);
+    let source_context =
+        crate::source::build_context_with_budget(&source_files, cfg.review_max_context);
+
     let messages = vec![
         ChatMessage {
             role: "system",
@@ -131,7 +139,7 @@ async fn single_round_review(
         },
         ChatMessage {
             role: "user",
-            content: format!("{SINGLE_ROUND_USER_TEMPLATE}{diff}\n```"),
+            content: format!("{SINGLE_ROUND_USER_TEMPLATE}{diff}\n```{source_context}"),
         },
     ];
     match vllm::chat_complete(&messages, model, 4096, 0.2, client, cfg).await {
@@ -243,7 +251,9 @@ const SUMMARIZE_USER_TEMPLATE: &str = concat!(
     "- Location always in backticks\n",
     "- top_files: files with most findings, max 3\n",
     "- risk_score: highest severity present; none if no findings\n",
-    "- Be specific: reference actual variable names, function names, and line numbers from the diff\n\n",
+    "- Be specific: reference actual variable names, function names, and line numbers from the diff\n",
+    "- Source files are provided after the diff for verification context only. Do NOT review unchanged code in source files.\n",
+    "- Use source files to verify whether issues in the diff are real — reference specific line numbers when confirming issues.\n\n",
     "Findings collected from all diff chunks:\n\n"
 );
 
