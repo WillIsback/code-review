@@ -22,6 +22,10 @@ inputs:
     description: "Number of retries on LLM request failure"
     required: false
     default: "2"
+  vllm-api-key:
+    description: "API key for vLLM server authentication (optional, defaults to 'none')"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -51,6 +55,7 @@ runs:
         VLLM_MODEL: ${{ inputs.vllm-model }}
         VLLM_TIMEOUT_SECS: ${{ inputs.vllm-timeout }}
         VLLM_RETRIES: ${{ inputs.vllm-retries }}
+        VLLM_API_KEY: ${{ inputs.vllm-api-key }}
         GITHUB_REPOSITORY: ${{ github.repository }}
         PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
       run: ${{ github.action_path }}/code-review-cli

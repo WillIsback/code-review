@@ -67,7 +67,15 @@ async fn main() {
     println!("{review_text}");
 
     // Post comment
-    match github::post_pr_comment(&review_text, &gh.repository, gh.pr_number, &gh.token).await {
+    match github::post_pr_comment(
+        &review_text,
+        &gh.repository,
+        gh.pr_number,
+        &gh.token,
+        &llm_client,
+    )
+    .await
+    {
         Ok(()) => println!("Review comment posted successfully."),
         Err(e) => {
             eprintln!("Review generated but comment posting failed: {e}");

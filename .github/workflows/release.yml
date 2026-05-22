@@ -66,7 +66,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
         with:
           key: ${{ matrix.target }}
 
@@ -132,7 +132,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
         with:
           key: ${{ matrix.target }}
 
@@ -174,16 +174,18 @@ jobs:
           toolchain: "1.91.1"
 
       - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@23869a5bd66c73db3c0ac40331f3206eb23791dc # v2.9.1
 
       - name: Build binaries
         # advapi32 is auto-linked by the Windows SDK; no RUSTFLAGS override needed
         run: cargo build --release --bin code-review-cli
 
       - name: Rename binaries and generate checksums
+        shell: pwsh
         run: |
-          cp target/release/code-review-cli.exe code-review-cli-windows-amd64.exe
-          certutil -hashfile code-review-cli-windows-amd64.exe SHA256 > code-review-cli-windows-amd64.exe.sha256
+          Copy-Item target/release/code-review-cli.exe code-review-cli-windows-amd64.exe
+          $hash = (Get-FileHash code-review-cli-windows-amd64.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  code-review-cli-windows-amd64.exe" | Out-File -Encoding ascii code-review-cli-windows-amd64.exe.sha256
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0

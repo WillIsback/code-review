@@ -33,20 +33,43 @@ async fn post_chat_completions(
         format!("{base}/v1/chat/completions")
     };
 
-    let resp: serde_json::Value = client
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", cfg.vllm_api_key))
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| AppError::RequestFailed {
-            reason: e.to_string(),
-        })?
-        .json()
-        .await
-        .map_err(|e| AppError::RequestFailed {
-            reason: e.to_string(),
-        })?;
+    let mut last_err = None;
+    let max_attempts = cfg.vllm_retries.saturating_add(1);
+    let resp: serde_json::Value = 'retry: {
+        for attempt in 1..=max_attempts {
+            let result = client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", cfg.vllm_api_key))
+                .json(&body)
+                .send()
+                .await;
+
+            match result {
+                Ok(response) => match response.error_for_status() {
+                    Ok(ok_resp) => match ok_resp.json().await {
+                        Ok(json) => break 'retry json,
+                        Err(e) => {
+                            last_err = Some(e.to_string());
+                        }
+                    },
+                    Err(e) => {
+                        last_err = Some(e.to_string());
+                    }
+                },
+                Err(e) => {
+                    last_err = Some(e.to_string());
+                }
+            }
+
+            if attempt < max_attempts {
+                eprintln!("vLLM request attempt {attempt}/{max_attempts} failed, retrying...");
+                tokio::time::sleep(std::time::Duration::from_secs(u64::from(attempt))).await;
+            }
+        }
+        return Err(AppError::RequestFailed {
+            reason: last_err.unwrap_or_else(|| "all retries exhausted".to_string()),
+        });
+    };
 
     let content = resp["choices"][0]["message"]["content"]
         .as_str()
@@ -104,6 +127,10 @@ pub async fn detect_model(client: &reqwest::Client, cfg: &Config) -> Result<Stri
         .await
         .map_err(|_| AppError::VllmUnreachable {
             url: cfg.models_url(),
+        })?
+        .error_for_status()
+        .map_err(|e| AppError::RequestFailed {
+            reason: e.to_string(),
         })?
         .json()
         .await?;
