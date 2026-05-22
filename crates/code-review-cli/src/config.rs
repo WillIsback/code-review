@@ -6,6 +6,7 @@ pub struct Config {
     pub vllm_api_key: String,
     pub connect_timeout_secs: u64,
     pub vllm_timeout_secs: u64,
+    pub vllm_retries: u32,
 }
 
 impl Config {
@@ -19,6 +20,10 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(120),
+            vllm_retries: env::var("VLLM_RETRIES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(2),
         }
     }
 

@@ -96,6 +96,7 @@ pub async fn post_pr_comment(
     repo: &str,
     pr_number: u64,
     token: &str,
+    client: &reqwest::Client,
 ) -> Result<(), String> {
     const MAX_LEN: usize = 60_000;
     let mut body = review.to_string();
@@ -111,7 +112,6 @@ pub async fn post_pr_comment(
         body.push_str("\n\n[Truncated due to GitHub comment size limit]");
     }
 
-    let client = reqwest::Client::new();
     let url = format!("https://api.github.com/repos/{repo}/issues/{pr_number}/comments");
     let resp = client
         .post(&url)
