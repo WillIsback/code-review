@@ -12,12 +12,22 @@ pub fn extract_modified_files(diff: &str) -> Vec<String> {
         .collect()
 }
 
+/// Returns true if a file path is safe to read (no traversal, no absolute path).
+fn is_safe_path(path: &str) -> bool {
+    !path.starts_with('/') && !path.starts_with('\\') && !path.contains("..")
+}
+
 /// Read source files from the filesystem (relative to CWD).
 /// Returns Vec<(filename, content)>. Skips files that don't exist.
+/// Rejects paths with traversal components for security.
 /// Truncates files exceeding MAX_SOURCE_LINES with a note.
 pub fn read_source_files(files: &[String]) -> Vec<(String, String)> {
     let mut result = Vec::new();
     for file in files {
+        if !is_safe_path(file) {
+            eprintln!("Unsafe path rejected (skipping): {file}");
+            continue;
+        }
         let path = Path::new(file);
         if !path.exists() {
             eprintln!("Source file not found (skipping): {file}");
@@ -45,20 +55,6 @@ pub fn read_source_files(files: &[String]) -> Vec<(String, String)> {
         }
     }
     result
-}
-
-/// Format source files into a prompt section.
-pub fn format_source_context(files: &[(String, String)]) -> String {
-    if files.is_empty() {
-        return String::new();
-    }
-    let mut out = String::from(
-        "\n\n[SOURCE FILES — for verification context, do NOT review unchanged code]\n",
-    );
-    for (name, content) in files {
-        out.push_str(&format!("\n## file: {name}\n```\n{content}\n```\n"));
-    }
-    out
 }
 
 /// Build source context respecting a character budget.
@@ -119,19 +115,6 @@ mod tests {
     }
 
     #[test]
-    fn format_source_empty() {
-        assert!(format_source_context(&[]).is_empty());
-    }
-
-    #[test]
-    fn format_source_with_files() {
-        let files = vec![("main.rs".to_string(), "fn main() {}".to_string())];
-        let output = format_source_context(&files);
-        assert!(output.contains("## file: main.rs"));
-        assert!(output.contains("fn main() {}"));
-    }
-
-    #[test]
     fn budget_excludes_large_files() {
         let files = vec![
             ("small.rs".to_string(), "x".repeat(100)),
@@ -142,6 +125,28 @@ mod tests {
         assert!(output.contains("small.rs"));
         assert!(output.contains("excluded"));
         assert!(output.contains("big.rs"));
+    }
+
+    #[test]
+    fn safe_path_rejects_traversal() {
+        assert!(!is_safe_path("../etc/passwd"));
+        assert!(!is_safe_path("/etc/shadow"));
+        assert!(!is_safe_path("foo/../../bar"));
+        assert!(!is_safe_path("\\windows\\system32"));
+    }
+
+    #[test]
+    fn safe_path_accepts_relative() {
+        assert!(is_safe_path("src/main.rs"));
+        assert!(is_safe_path("crates/cli/src/lib.rs"));
+        assert!(is_safe_path("Cargo.toml"));
+    }
+
+    #[test]
+    fn read_source_rejects_unsafe_paths() {
+        let files = vec!["../../../etc/passwd".to_string()];
+        let result = read_source_files(&files);
+        assert!(result.is_empty());
     }
 
     #[test]

@@ -393,9 +393,7 @@ const SUMMARIZE_USER_TEMPLATE: &str = concat!(
     "- Be specific: reference actual variable names, function names, and line numbers from the diff\n",
     "- An empty findings table is a valid and positive outcome when code quality is good.\n",
     "- Do NOT report issues based on assumptions about external APIs, frameworks, or language features you cannot verify from the diff.\n",
-    "- Prefer fewer high-confidence findings over many speculative ones.\n",
-    "- Source files are provided after the diff for verification context only. Do NOT review unchanged code in source files.\n",
-    "- Use source files to verify whether issues in the diff are real — reference specific line numbers when confirming issues.\n\n",
+    "- Prefer fewer high-confidence findings over many speculative ones.\n\n",
     "Findings collected from all diff chunks:\n\n"
 );
 
@@ -421,7 +419,8 @@ pub async fn verify_findings(
         return None; // caller will fall back to summarize_review()
     }
 
-    let source_context = crate::source::format_source_context(&source_files);
+    let source_context =
+        crate::source::build_context_with_budget(&source_files, cfg.review_max_context);
     let combined_findings = chunk_reviews.join("\n\n---\n\n");
 
     let messages = vec![
