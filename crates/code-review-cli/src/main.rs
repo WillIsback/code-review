@@ -2,6 +2,7 @@ mod config;
 mod error;
 mod github;
 mod review;
+mod source;
 mod vllm;
 
 use config::Config;
