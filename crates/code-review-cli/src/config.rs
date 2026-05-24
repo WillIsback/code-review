@@ -7,6 +7,7 @@ pub struct Config {
     pub connect_timeout_secs: u64,
     pub vllm_timeout_secs: u64,
     pub vllm_retries: u32,
+    pub review_max_context: usize,
 }
 
 impl Config {
@@ -24,6 +25,10 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(2),
+            review_max_context: env::var("REVIEW_MAX_CONTEXT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(100_000),
         }
     }
 
