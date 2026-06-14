@@ -123,6 +123,7 @@ pub async fn resolve_model(client: &reqwest::Client, cfg: &Config) -> Result<Str
 pub async fn detect_model(client: &reqwest::Client, cfg: &Config) -> Result<String, AppError> {
     let resp: ModelsResponse = client
         .get(cfg.models_url())
+        .header("Authorization", format!("Bearer {}", cfg.vllm_api_key))
         .send()
         .await
         .map_err(|_| AppError::VllmUnreachable {

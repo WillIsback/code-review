@@ -56,4 +56,5 @@ jobs:
         uses: ./
         with:
           vllm-url: ${{ secrets.VLLM_URL }}
+          vllm-api-key: ${{ secrets.VLLM_API_KEY }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
