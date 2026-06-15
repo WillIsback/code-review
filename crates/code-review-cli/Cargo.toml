@@ -15,7 +15,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 miette = { workspace = true }
 dotenvy = { workspace = true }
-octocrab = "0.41"
+octocrab = "0.53"
 git2 = { version = "0.20", features = ["vendored-openssl"] }
 
 [dev-dependencies]
