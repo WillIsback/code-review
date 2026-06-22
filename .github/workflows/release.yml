@@ -32,7 +32,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           name: ${{ github.ref_name }}
           body_path: release-notes.md # avoids YAML special-char injection
@@ -99,7 +99,7 @@ jobs:
           sha256sum code-review-cli-${{ matrix.platform }} > code-review-cli-${{ matrix.platform }}.sha256
 
       - name: Publish to GitHub Releases
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           files: |
             code-review-cli-${{ matrix.platform }}
@@ -150,7 +150,7 @@ jobs:
           shasum -a 256 code-review-cli-${{ matrix.platform }} > code-review-cli-${{ matrix.platform }}.sha256
 
       - name: Publish to GitHub Releases
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           files: |
             code-review-cli-${{ matrix.platform }}
@@ -188,7 +188,7 @@ jobs:
           "$hash  code-review-cli-windows-amd64.exe" | Out-File -Encoding ascii code-review-cli-windows-amd64.exe.sha256
 
       - name: Publish to GitHub Releases
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           files: |
             code-review-cli-windows-amd64.exe
