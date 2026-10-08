@@ -1,0 +1,17 @@
+name: Code Review Gate
+
+# Untrusted workflow: runs on PRs with NO secrets. It exists only to give the
+# privileged review workflow a `workflow_run` event to hang off. It must exist
+# on the default branch.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Gate — triggers the privileged AI review via workflow_run."
