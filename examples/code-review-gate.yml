@@ -14,5 +14,3 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo "Gate — triggers the privileged AI review via workflow_run."
-
-# e2e test marker
