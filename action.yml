@@ -1,7 +1,8 @@
 name: AI Code Review
 description: >
-  Review a GitHub Pull Request using a self-hosted vLLM instance.
-  Posts a structured Markdown comment directly on the PR.
+  Review a GitHub Pull Request or triage an Issue using a self-hosted vLLM
+  instance reached through a Cloudflare Tunnel. Posts a structured Markdown
+  comment.
 
 inputs:
   vllm-url:
