@@ -40,7 +40,7 @@ jobs:
 
   ai-code-review:
     name: AI Code Review
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: build-and-test
     # Only run on PRs from the same repo (not forks) and not from Dependabot
     # (Dependabot PRs don't receive repo secrets, so VLLM_URL is always empty there)
@@ -49,12 +49,18 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       pull-requests: write
+      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run AI Code Review
         uses: ./
         with:
+          target-type: pr
+          target-number: ${{ github.event.pull_request.number }}
+          head-sha: ${{ github.event.pull_request.head.sha }}
           vllm-url: ${{ secrets.VLLM_URL }}
           vllm-api-key: ${{ secrets.VLLM_API_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
