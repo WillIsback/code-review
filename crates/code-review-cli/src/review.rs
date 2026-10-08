@@ -176,6 +176,7 @@ const SINGLE_ROUND_USER_TEMPLATE: &str = concat!(
 /// - N files -> two rounds (per-chunk bullets + verification against source)
 pub async fn review_diff(
     diff: &str,
+    source_files: &[(String, String)],
     model: &str,
     client: &reqwest::Client,
     cfg: &Config,
@@ -195,23 +196,21 @@ pub async fn review_diff(
     );
 
     if file_count <= 1 {
-        single_round_review(diff, model, client, cfg).await
+        single_round_review(diff, source_files, model, client, cfg).await
     } else {
-        multi_round_review(diff, model, client, cfg).await
+        multi_round_review(diff, source_files, model, client, cfg).await
     }
 }
 
 async fn single_round_review(
     diff: &str,
+    source_files: &[(String, String)],
     model: &str,
     client: &reqwest::Client,
     cfg: &Config,
 ) -> Option<String> {
-    // Load source files for context
-    let file_paths = crate::source::extract_modified_files(diff);
-    let source_files = crate::source::read_source_files(&file_paths);
     let source_context =
-        crate::source::build_context_with_budget(&source_files, cfg.review_max_context);
+        crate::source::build_context_with_budget(source_files, cfg.review_max_context);
 
     let messages = vec![
         ChatMessage {
@@ -234,6 +233,7 @@ async fn single_round_review(
 
 async fn multi_round_review(
     diff: &str,
+    source_files: &[(String, String)],
     model: &str,
     client: &reqwest::Client,
     cfg: &Config,
@@ -278,7 +278,7 @@ async fn multi_round_review(
         .collect();
 
     // Round 2: verify findings against source code, fallback to summarize
-    let verified = verify_findings(&valid_reviews, diff, model, client, cfg).await;
+    let verified = verify_findings(&valid_reviews, source_files, model, client, cfg).await;
     match verified {
         Some(report) => Some(report),
         None => {
@@ -397,11 +397,67 @@ const SUMMARIZE_USER_TEMPLATE: &str = concat!(
     "Findings collected from all diff chunks:\n\n"
 );
 
+const ISSUE_SYSTEM_PROMPT: &str =
+    "You are a senior software engineer triaging a GitHub issue for a maintainer. \
+     Be precise and actionable. Output only the requested format, no preamble. \
+     Do not invent facts about the project or its APIs. If the issue already contains \
+     enough information to act, say so.";
+
+const ISSUE_USER_TEMPLATE: &str = concat!(
+    "Triage this GitHub issue and output exactly this structure:\n\n",
+    "## 🧭 AI Issue Triage\n\n",
+    "### 📋 Summary\n",
+    "1-3 sentences restating the issue in your own words.\n\n",
+    "### ❓ Missing Information\n",
+    "Bullet list of what is needed to act (versions, repro steps, logs, expected vs actual behavior). ",
+    "If nothing is missing, write: None — the issue is actionable.\n\n",
+    "### 🔎 Possible Duplicates / Related\n",
+    "Best-effort hints at related topics, or: None identified.\n\n",
+    "### 🏷 Suggested Labels\n",
+    "Comma-separated label suggestions, or: None.\n\n",
+    "### 🧪 Suggested Next Steps\n",
+    "Ordered, concrete actions for a maintainer.\n\n",
+    "Rules:\n",
+    "- Do not invent facts about the project\n",
+    "- Keep it concise\n",
+    "- Do not add any conclusion beyond the sections above\n\n",
+    "Issue:\n"
+);
+
+/// Triage an issue from its formatted title/body/comments context.
+pub async fn review_issue(
+    context: &str,
+    model: &str,
+    client: &reqwest::Client,
+    cfg: &Config,
+) -> Option<String> {
+    if context.trim().is_empty() {
+        return None;
+    }
+    let messages = vec![
+        ChatMessage {
+            role: "system",
+            content: ISSUE_SYSTEM_PROMPT.to_string(),
+        },
+        ChatMessage {
+            role: "user",
+            content: format!("{ISSUE_USER_TEMPLATE}{context}"),
+        },
+    ];
+    match vllm::chat_complete(&messages, model, 2048, 0.2, client, cfg).await {
+        Ok(text) => Some(text),
+        Err(e) => {
+            eprintln!("Warning: issue triage failed: {e}");
+            None
+        }
+    }
+}
+
 /// Verify Round 1 findings against actual source code.
 /// Returns the verified review report, or None on failure.
 pub async fn verify_findings(
     chunk_reviews: &[String],
-    diff: &str,
+    source_files: &[(String, String)],
     model: &str,
     client: &reqwest::Client,
     cfg: &Config,
@@ -410,17 +466,13 @@ pub async fn verify_findings(
         return None;
     }
 
-    // Read source files from filesystem
-    let file_paths = crate::source::extract_modified_files(diff);
-    let source_files = crate::source::read_source_files(&file_paths);
-
     if source_files.is_empty() {
-        eprintln!("No source files readable, falling back to summarization.");
+        eprintln!("No source files available, falling back to summarization.");
         return None; // caller will fall back to summarize_review()
     }
 
     let source_context =
-        crate::source::build_context_with_budget(&source_files, cfg.review_max_context);
+        crate::source::build_context_with_budget(source_files, cfg.review_max_context);
     let combined_findings = chunk_reviews.join("\n\n---\n\n");
 
     let messages = vec![
@@ -841,5 +893,19 @@ mod tests {
         assert!(VERIFY_USER_TEMPLATE.contains("REJECTED"));
         assert!(VERIFY_USER_TEMPLATE.contains("DOWNGRADED"));
         assert!(VERIFY_USER_TEMPLATE.contains("[FINDINGS TO VERIFY]"));
+    }
+
+    #[test]
+    fn issue_template_contains_sections() {
+        assert!(ISSUE_USER_TEMPLATE.contains("AI Issue Triage"));
+        assert!(ISSUE_USER_TEMPLATE.contains("Missing Information"));
+        assert!(ISSUE_USER_TEMPLATE.contains("Possible Duplicates"));
+        assert!(ISSUE_USER_TEMPLATE.contains("Suggested Labels"));
+        assert!(ISSUE_USER_TEMPLATE.contains("Suggested Next Steps"));
+    }
+
+    #[test]
+    fn issue_system_prompt_forbids_inventing() {
+        assert!(ISSUE_SYSTEM_PROMPT.contains("Do not invent"));
     }
 }
