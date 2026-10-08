@@ -12,8 +12,9 @@ permissions:
   pull-requests: write
   contents: read
 
-# SECURITY: replace <full-sha> with the full commit SHA of a reviewed release of
-# WillIsback/code-review. NEVER use @main here — this workflow holds secrets.
+# SECURITY: pinned to the v0.5.0 release commit of WillIsback/code-review.
+# Update to the full SHA of the latest reviewed release; NEVER use @main here —
+# this workflow holds secrets.
 
 jobs:
   review:
@@ -26,7 +27,7 @@ jobs:
           echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
 
       - name: AI Code Review
-        uses: WillIsback/code-review@<full-sha>
+        uses: WillIsback/code-review@f622c0ac17efa6d4f91224194983f8a54b9d6d9c # v0.5.0
         with:
           target-type: pr
           target-number: ${{ steps.ctx.outputs.number }}
