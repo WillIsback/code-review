@@ -1,8 +1,8 @@
 name: AI Code Review
 description: >
-  Review a GitHub Pull Request or triage an Issue using a self-hosted vLLM
-  instance reached through a Cloudflare Tunnel. Posts a structured Markdown
-  comment.
+  Review a GitHub Pull Request or triage an Issue using any OpenAI-compatible
+  endpoint (e.g. a self-hosted vLLM reachable over HTTPS). Posts a structured
+  Markdown comment.
 
 inputs:
   vllm-url:
@@ -39,12 +39,8 @@ inputs:
     description: "PR head commit SHA (used for source context and PR-number fallback in workflow_run)"
     required: false
     default: ""
-  cf-access-client-id:
-    description: "Cloudflare Access service token client id (optional)"
-    required: false
-    default: ""
-  cf-access-client-secret:
-    description: "Cloudflare Access service token client secret (optional)"
+  extra-headers:
+    description: "Extra HTTP headers sent with every vLLM request, one 'Name: Value' per line (e.g. gateway/auth headers)"
     required: false
     default: ""
 
@@ -80,7 +76,6 @@ runs:
         TARGET_TYPE: ${{ inputs.target-type }}
         TARGET_NUMBER: ${{ inputs.target-number || github.event.pull_request.number || github.event.issue.number }}
         HEAD_SHA: ${{ inputs.head-sha || github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
-        CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
-        CF_ACCESS_CLIENT_SECRET: ${{ inputs.cf-access-client-secret }}
+        EXTRA_HEADERS: ${{ inputs.extra-headers }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: ${{ github.action_path }}/code-review-cli

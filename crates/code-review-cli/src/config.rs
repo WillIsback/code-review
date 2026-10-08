@@ -8,8 +8,23 @@ pub struct Config {
     pub vllm_timeout_secs: u64,
     pub vllm_retries: u32,
     pub review_max_context: usize,
-    pub cf_access_client_id: String,
-    pub cf_access_client_secret: String,
+    /// Extra HTTP headers added to every vLLM request (gateway/auth headers, e.g.
+    /// Cloudflare Access service tokens). Parsed from `EXTRA_HEADERS`.
+    pub extra_headers: Vec<(String, String)>,
+}
+
+/// Parse `EXTRA_HEADERS`: one `Name: Value` per line; blank lines and lines
+/// starting with `#` are ignored. Lines without `:` are skipped.
+pub fn parse_extra_headers(raw: &str) -> Vec<(String, String)> {
+    raw.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| {
+            line.split_once(':')
+                .map(|(name, value)| (name.trim().to_string(), value.trim().to_string()))
+        })
+        .filter(|(name, value)| !name.is_empty() && !value.is_empty())
+        .collect()
 }
 
 impl Config {
@@ -31,8 +46,7 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(100_000),
-            cf_access_client_id: env::var("CF_ACCESS_CLIENT_ID").unwrap_or_default(),
-            cf_access_client_secret: env::var("CF_ACCESS_CLIENT_SECRET").unwrap_or_default(),
+            extra_headers: parse_extra_headers(&env::var("EXTRA_HEADERS").unwrap_or_default()),
         }
     }
 
@@ -96,30 +110,55 @@ mod tests {
     }
 
     #[test]
+    fn parse_extra_headers_reads_lines() {
+        let raw = "CF-Access-Client-Id: id123\nCF-Access-Client-Secret: secret456\n";
+        assert_eq!(
+            parse_extra_headers(raw),
+            vec![
+                ("CF-Access-Client-Id".to_string(), "id123".to_string()),
+                (
+                    "CF-Access-Client-Secret".to_string(),
+                    "secret456".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_extra_headers_ignores_blanks_comments_and_junk() {
+        let raw = "\n# a comment\nNoColonHere\nX-Api-Key:   k\n  Y : v  \n";
+        assert_eq!(
+            parse_extra_headers(raw),
+            vec![
+                ("X-Api-Key".to_string(), "k".to_string()),
+                ("Y".to_string(), "v".to_string()),
+            ]
+        );
+    }
+
+    #[test]
     #[serial]
-    fn reads_cf_access_env() {
+    fn reads_extra_headers_env() {
         unsafe {
-            std::env::set_var("CF_ACCESS_CLIENT_ID", "id123");
-            std::env::set_var("CF_ACCESS_CLIENT_SECRET", "secret456");
+            std::env::set_var("EXTRA_HEADERS", "X-Test: yes\n");
         }
         let cfg = Config::from_env();
-        assert_eq!(cfg.cf_access_client_id, "id123");
-        assert_eq!(cfg.cf_access_client_secret, "secret456");
+        assert_eq!(
+            cfg.extra_headers,
+            vec![("X-Test".to_string(), "yes".to_string())]
+        );
         unsafe {
-            std::env::remove_var("CF_ACCESS_CLIENT_ID");
-            std::env::remove_var("CF_ACCESS_CLIENT_SECRET");
+            std::env::remove_var("EXTRA_HEADERS");
         }
     }
 
     #[test]
     #[serial]
-    fn cf_access_defaults_empty() {
+    fn extra_headers_default_empty() {
         unsafe {
-            std::env::remove_var("CF_ACCESS_CLIENT_ID");
-            std::env::remove_var("CF_ACCESS_CLIENT_SECRET");
+            std::env::remove_var("EXTRA_HEADERS");
         }
         let cfg = Config::from_env();
-        assert!(cfg.cf_access_client_id.is_empty());
-        assert!(cfg.cf_access_client_secret.is_empty());
+        assert!(cfg.extra_headers.is_empty());
     }
 }
