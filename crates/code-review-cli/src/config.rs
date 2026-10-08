@@ -8,9 +8,7 @@ pub struct Config {
     pub vllm_timeout_secs: u64,
     pub vllm_retries: u32,
     pub review_max_context: usize,
-    #[allow(dead_code)]
     pub cf_access_client_id: String,
-    #[allow(dead_code)]
     pub cf_access_client_secret: String,
 }
 
