@@ -8,6 +8,8 @@ pub struct Config {
     pub vllm_timeout_secs: u64,
     pub vllm_retries: u32,
     pub review_max_context: usize,
+    pub cf_access_client_id: String,
+    pub cf_access_client_secret: String,
 }
 
 impl Config {
@@ -29,6 +31,8 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(100_000),
+            cf_access_client_id: env::var("CF_ACCESS_CLIENT_ID").unwrap_or_default(),
+            cf_access_client_secret: env::var("CF_ACCESS_CLIENT_SECRET").unwrap_or_default(),
         }
     }
 
@@ -89,5 +93,33 @@ mod tests {
         let mut cfg = Config::from_env();
         cfg.vllm_base_url = "http://host:30000/v1".to_string();
         assert_eq!(cfg.models_url(), "http://host:30000/v1/models");
+    }
+
+    #[test]
+    #[serial]
+    fn reads_cf_access_env() {
+        unsafe {
+            std::env::set_var("CF_ACCESS_CLIENT_ID", "id123");
+            std::env::set_var("CF_ACCESS_CLIENT_SECRET", "secret456");
+        }
+        let cfg = Config::from_env();
+        assert_eq!(cfg.cf_access_client_id, "id123");
+        assert_eq!(cfg.cf_access_client_secret, "secret456");
+        unsafe {
+            std::env::remove_var("CF_ACCESS_CLIENT_ID");
+            std::env::remove_var("CF_ACCESS_CLIENT_SECRET");
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn cf_access_defaults_empty() {
+        unsafe {
+            std::env::remove_var("CF_ACCESS_CLIENT_ID");
+            std::env::remove_var("CF_ACCESS_CLIENT_SECRET");
+        }
+        let cfg = Config::from_env();
+        assert!(cfg.cf_access_client_id.is_empty());
+        assert!(cfg.cf_access_client_secret.is_empty());
     }
 }

@@ -19,6 +19,20 @@ pub struct ChatMessage {
     pub content: String,
 }
 
+/// Attach Cloudflare Access service-token headers when configured.
+fn apply_access_headers(mut req: reqwest::RequestBuilder, cfg: &Config) -> reqwest::RequestBuilder {
+    if !cfg.cf_access_client_id.is_empty() {
+        req = req.header("CF-Access-Client-Id", cfg.cf_access_client_id.clone());
+    }
+    if !cfg.cf_access_client_secret.is_empty() {
+        req = req.header(
+            "CF-Access-Client-Secret",
+            cfg.cf_access_client_secret.clone(),
+        );
+    }
+    req
+}
+
 /// POST a JSON body to the vLLM chat completions endpoint and extract the
 /// first choice's `content` field.
 async fn post_chat_completions(
@@ -37,12 +51,15 @@ async fn post_chat_completions(
     let max_attempts = cfg.vllm_retries.saturating_add(1);
     let resp: serde_json::Value = 'retry: {
         for attempt in 1..=max_attempts {
-            let result = client
-                .post(&url)
-                .header("Authorization", format!("Bearer {}", cfg.vllm_api_key))
-                .json(&body)
-                .send()
-                .await;
+            let result = apply_access_headers(
+                client
+                    .post(&url)
+                    .header("Authorization", format!("Bearer {}", cfg.vllm_api_key))
+                    .json(&body),
+                cfg,
+            )
+            .send()
+            .await;
 
             match result {
                 Ok(response) => match response.error_for_status() {
@@ -121,23 +138,67 @@ pub async fn resolve_model(client: &reqwest::Client, cfg: &Config) -> Result<Str
 
 /// Returns the first model ID advertised by the vLLM server.
 pub async fn detect_model(client: &reqwest::Client, cfg: &Config) -> Result<String, AppError> {
-    let resp: ModelsResponse = client
-        .get(cfg.models_url())
-        .header("Authorization", format!("Bearer {}", cfg.vllm_api_key))
-        .send()
-        .await
-        .map_err(|_| AppError::VllmUnreachable {
-            url: cfg.models_url(),
-        })?
-        .error_for_status()
-        .map_err(|e| AppError::RequestFailed {
-            reason: e.to_string(),
-        })?
-        .json()
-        .await?;
+    let resp: ModelsResponse = apply_access_headers(
+        client
+            .get(cfg.models_url())
+            .header("Authorization", format!("Bearer {}", cfg.vllm_api_key)),
+        cfg,
+    )
+    .send()
+    .await
+    .map_err(|_| AppError::VllmUnreachable {
+        url: cfg.models_url(),
+    })?
+    .error_for_status()
+    .map_err(|e| AppError::RequestFailed {
+        reason: e.to_string(),
+    })?
+    .json()
+    .await?;
     resp.data
         .into_iter()
         .next()
         .map(|m| m.id)
         .ok_or(AppError::NoModelsAvailable)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg_with_access(id: &str, secret: &str) -> Config {
+        let mut cfg = Config::from_env();
+        cfg.cf_access_client_id = id.to_string();
+        cfg.cf_access_client_secret = secret.to_string();
+        cfg
+    }
+
+    #[test]
+    fn access_headers_added_when_set() {
+        let cfg = cfg_with_access("id123", "secret456");
+        let req = apply_access_headers(
+            reqwest::Client::new().get("http://localhost/v1/models"),
+            &cfg,
+        )
+        .build()
+        .expect("request builds");
+        assert_eq!(req.headers().get("CF-Access-Client-Id").unwrap(), "id123");
+        assert_eq!(
+            req.headers().get("CF-Access-Client-Secret").unwrap(),
+            "secret456"
+        );
+    }
+
+    #[test]
+    fn access_headers_absent_when_empty() {
+        let cfg = cfg_with_access("", "");
+        let req = apply_access_headers(
+            reqwest::Client::new().get("http://localhost/v1/models"),
+            &cfg,
+        )
+        .build()
+        .expect("request builds");
+        assert!(req.headers().get("CF-Access-Client-Id").is_none());
+        assert!(req.headers().get("CF-Access-Client-Secret").is_none());
+    }
 }

@@ -1,7 +1,4 @@
-use std::fs;
-use std::path::Path;
-
-const MAX_SOURCE_LINES: usize = 1000;
+pub(crate) const MAX_SOURCE_LINES: usize = 1000;
 
 /// Extract modified file paths from a diff string.
 /// Parses `# File:` headers added by `fetch_pr_diff()`.
@@ -13,48 +10,8 @@ pub fn extract_modified_files(diff: &str) -> Vec<String> {
 }
 
 /// Returns true if a file path is safe to read (no traversal, no absolute path).
-fn is_safe_path(path: &str) -> bool {
+pub(crate) fn is_safe_path(path: &str) -> bool {
     !path.starts_with('/') && !path.starts_with('\\') && !path.contains("..")
-}
-
-/// Read source files from the filesystem (relative to CWD).
-/// Returns Vec<(filename, content)>. Skips files that don't exist.
-/// Rejects paths with traversal components for security.
-/// Truncates files exceeding MAX_SOURCE_LINES with a note.
-pub fn read_source_files(files: &[String]) -> Vec<(String, String)> {
-    let mut result = Vec::new();
-    for file in files {
-        if !is_safe_path(file) {
-            eprintln!("Unsafe path rejected (skipping): {file}");
-            continue;
-        }
-        let path = Path::new(file);
-        if !path.exists() {
-            eprintln!("Source file not found (skipping): {file}");
-            continue;
-        }
-        match fs::read_to_string(path) {
-            Ok(content) => {
-                let lines: Vec<&str> = content.lines().collect();
-                if lines.len() > MAX_SOURCE_LINES {
-                    let truncated: String = lines[..MAX_SOURCE_LINES].join("\n");
-                    result.push((
-                        file.clone(),
-                        format!(
-                            "{truncated}\n\n[... truncated at {MAX_SOURCE_LINES} lines, {} total ...]",
-                            lines.len()
-                        ),
-                    ));
-                } else {
-                    result.push((file.clone(), content));
-                }
-            }
-            Err(e) => {
-                eprintln!("Failed to read {file}: {e}");
-            }
-        }
-    }
-    result
 }
 
 /// Build source context respecting a character budget.
@@ -140,13 +97,6 @@ mod tests {
         assert!(is_safe_path("src/main.rs"));
         assert!(is_safe_path("crates/cli/src/lib.rs"));
         assert!(is_safe_path("Cargo.toml"));
-    }
-
-    #[test]
-    fn read_source_rejects_unsafe_paths() {
-        let files = vec!["../../../etc/passwd".to_string()];
-        let result = read_source_files(&files);
-        assert!(result.is_empty());
     }
 
     #[test]

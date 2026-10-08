@@ -1,0 +1,32 @@
+name: AI Issue Triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+# SECURITY: replace <full-sha> with the full commit SHA of a reviewed release of
+# WillIsback/code-review. NEVER use @main here — this workflow holds secrets.
+
+jobs:
+  triage:
+    # Public repos: only trusted authors trigger paid inference. Relax or replace
+    # with a label check if you want community triage.
+    if: contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      - name: AI Issue Triage
+        uses: WillIsback/code-review@<full-sha>
+        with:
+          target-type: issue
+          target-number: ${{ github.event.issue.number }}
+          vllm-model: ${{ vars.VLLM_MODEL || '' }}
+          vllm-timeout: ${{ vars.VLLM_TIMEOUT || '120' }}
+          vllm-retries: ${{ vars.VLLM_RETRIES || '2' }}
+          vllm-url: ${{ secrets.VLLM_URL }}
+          vllm-api-key: ${{ secrets.VLLM_API_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}

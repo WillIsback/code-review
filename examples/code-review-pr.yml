@@ -1,0 +1,41 @@
+name: AI Code Review (PR)
+
+# Privileged workflow: runs in the context of the default branch, so it receives
+# secrets and its definition cannot be modified by a PR. Fork PRs never see the
+# secrets; this workflow fetches the diff via the API only.
+on:
+  workflow_run:
+    workflows: ["Code Review Gate"]
+    types: [completed]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+# SECURITY: replace <full-sha> with the full commit SHA of a reviewed release of
+# WillIsback/code-review. NEVER use @main here — this workflow holds secrets.
+
+jobs:
+  review:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - id: ctx
+        run: |
+          echo "number=${{ github.event.workflow_run.pull_requests[0].number }}" >> "$GITHUB_OUTPUT"
+          echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: AI Code Review
+        uses: WillIsback/code-review@<full-sha>
+        with:
+          target-type: pr
+          target-number: ${{ steps.ctx.outputs.number }}
+          head-sha: ${{ steps.ctx.outputs.sha }}
+          vllm-model: ${{ vars.VLLM_MODEL || '' }}
+          vllm-timeout: ${{ vars.VLLM_TIMEOUT || '120' }}
+          vllm-retries: ${{ vars.VLLM_RETRIES || '2' }}
+          vllm-url: ${{ secrets.VLLM_URL }}
+          vllm-api-key: ${{ secrets.VLLM_API_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}

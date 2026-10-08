@@ -1,7 +1,8 @@
 name: AI Code Review
 description: >
-  Review a GitHub Pull Request using a self-hosted vLLM instance.
-  Posts a structured Markdown comment directly on the PR.
+  Review a GitHub Pull Request or triage an Issue using a self-hosted vLLM
+  instance reached through a Cloudflare Tunnel. Posts a structured Markdown
+  comment.
 
 inputs:
   vllm-url:
@@ -24,6 +25,26 @@ inputs:
     default: "2"
   vllm-api-key:
     description: "API key for vLLM server authentication (optional, defaults to 'none')"
+    required: false
+    default: ""
+  target-type:
+    description: "Target kind: 'pr' or 'issue'"
+    required: false
+    default: "pr"
+  target-number:
+    description: "PR/issue number. Falls back to github.event.pull_request.number / github.event.issue.number"
+    required: false
+    default: ""
+  head-sha:
+    description: "PR head commit SHA (used for source context and PR-number fallback in workflow_run)"
+    required: false
+    default: ""
+  cf-access-client-id:
+    description: "Cloudflare Access service token client id (optional)"
+    required: false
+    default: ""
+  cf-access-client-secret:
+    description: "Cloudflare Access service token client secret (optional)"
     required: false
     default: ""
 
@@ -56,6 +77,10 @@ runs:
         VLLM_TIMEOUT_SECS: ${{ inputs.vllm-timeout }}
         VLLM_RETRIES: ${{ inputs.vllm-retries }}
         VLLM_API_KEY: ${{ inputs.vllm-api-key }}
+        TARGET_TYPE: ${{ inputs.target-type }}
+        TARGET_NUMBER: ${{ inputs.target-number || github.event.pull_request.number || github.event.issue.number }}
+        HEAD_SHA: ${{ inputs.head-sha || github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
+        CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+        CF_ACCESS_CLIENT_SECRET: ${{ inputs.cf-access-client-secret }}
         GITHUB_REPOSITORY: ${{ github.repository }}
-        PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
       run: ${{ github.action_path }}/code-review-cli
