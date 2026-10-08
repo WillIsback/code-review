@@ -1,6 +1,6 @@
 # code-review
 
-GitHub Composite Action that runs on **GitHub-hosted runners**, reviews **Pull Requests and Issues**, and posts a structured Markdown comment. It reaches a private self-hosted [vLLM](https://github.com/vllm-project/vllm) instance through a **Cloudflare Tunnel** (no inbound port).
+GitHub Composite Action that runs on **GitHub-hosted runners**, reviews **Pull Requests and Issues**, and posts a structured Markdown comment. It talks to any **OpenAI-compatible** endpoint (e.g. a self-hosted [vLLM](https://github.com/vllm-project/vllm)), which you expose to the runners yourself.
 
 The action downloads a pre-compiled **Rust binary** from GitHub Releases and executes it directly — no `setup-python`, no `pip install`, startup time is ~1 second plus inference.
 
@@ -8,15 +8,16 @@ The action downloads a pre-compiled **Rust binary** from GitHub Releases and exe
 
 ## Prerequisites
 
-| Requirement         | Details                                                                                   |
-| ------------------- | ----------------------------------------------------------------------------------------- |
-| vLLM server         | Running with `--api-key`; reachable from the internet via a tunnel                        |
-| Cloudflare Tunnel   | `cloudflared` publishes e.g. `vllm.example.com` (outbound only — no inbound port)         |
-| Cloudflare Access   | A **Service Auth** policy on the hostname; provides a client id + secret                  |
-| Repository secrets  | `VLLM_URL`, `VLLM_API_KEY`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`              |
-| Repository variable | `VLLM_MODEL`, `VLLM_TIMEOUT`, `VLLM_RETRIES` (optional; consumed via `vars.*`)            |
+| Requirement        | Details                                                                        |
+| ------------------ | ------------------------------------------------------------------------------ |
+| Endpoint           | Any OpenAI-compatible, HTTPS-reachable `…/v1` endpoint (self-hosted or hosted) |
+| Authentication     | Optional bearer key (`vllm-api-key`) and/or extra headers (e.g. gateway tokens) |
+| Repository secrets | `VLLM_URL`, `VLLM_API_KEY` (+ any header secrets your endpoint needs)          |
+| Repository vars    | `VLLM_MODEL`, `VLLM_TIMEOUT`, `VLLM_RETRIES` (optional; consumed via `vars.*`) |
 
-→ Full setup guide: [**Remote vLLM via Cloudflare Tunnel + Access**](docs/setup-cloudflare-tunnel.md).
+The endpoint must be reachable from GitHub-hosted runners. If it is private,
+publish it first — see [**Reaching a private inference endpoint**](docs/recipes/expose-private-endpoint.md)
+(Cloudflare Tunnel, Tailscale Funnel, reverse proxy).
 
 ---
 
@@ -40,7 +41,7 @@ completes. Repos that already run CI on PRs may instead point
 >
 > The CLI binary is fetched from `releases/latest`, so a SHA pin freezes the
 > action logic but **not** the binary — cut a tagged release for each change you
-> want live. See the [setup guide](docs/setup-cloudflare-tunnel.md#notes).
+> want live. See the [endpoint guide](docs/recipes/expose-private-endpoint.md#notes).
 
 ### Security model
 
@@ -49,8 +50,8 @@ completes. Repos that already run CI on PRs may instead point
   whose definition comes from the default branch and cannot be modified by the PR.
 - The action never checks out or executes PR code; the diff and source files are
   fetched through the GitHub API.
-- Two independent layers protect vLLM: Cloudflare Access (service token) + the
-  vLLM `--api-key`.
+- The endpoint is protected by a bearer key and/or extra gateway headers
+  (`extra-headers`), e.g. a Cloudflare Access service token.
 - Issue triage is gated on `author_association` to prevent inference spam.
 
 ---
@@ -59,7 +60,7 @@ completes. Repos that already run CI on PRs may instead point
 
 | Input                     | Required | Default | Description                                                     |
 | ------------------------- | -------- | ------- | --------------------------------------------------------------- |
-| `vllm-url`                | yes      | —       | Base URL of the vLLM server (e.g. `https://vllm.example.com/v1`) |
+| `vllm-url`                | yes      | —       | OpenAI-compatible base URL (e.g. `https://vllm.example.com/v1`)  |
 | `github-token`            | yes      | —       | Token for fetching the diff/issue and posting the comment       |
 | `target-type`             | no       | `pr`    | `pr` or `issue`                                                 |
 | `target-number`           | no       | `""`    | PR/issue number; falls back to the event's number               |
@@ -67,11 +68,26 @@ completes. Repos that already run CI on PRs may instead point
 | `vllm-model`              | no       | `""`    | Model override — auto-detected if empty                         |
 | `vllm-timeout`            | no       | `120`   | Total request timeout in seconds                                |
 | `vllm-retries`            | no       | `2`     | Number of retries on LLM request failure                        |
-| `vllm-api-key`            | no       | `""`    | vLLM bearer key                                                 |
-| `cf-access-client-id`     | no       | `""`    | Cloudflare Access service token id                              |
-| `cf-access-client-secret` | no       | `""`    | Cloudflare Access service token secret                          |
+| `vllm-api-key`            | no       | `""`    | Bearer key (`Authorization: Bearer …`)                          |
+| `extra-headers`           | no       | `""`    | Extra headers, one `Name: Value` per line (e.g. gateway tokens) |
 
 Store `vllm-model`, `vllm-timeout`, and `vllm-retries` as **repository variables** (`vars.*`) so they can be tuned without editing the workflow file.
+
+### Endpoint examples
+
+Any provider exposing OpenAI-style `POST /v1/chat/completions` and `GET /v1/models` works:
+
+| Provider | `vllm-url` |
+| --- | --- |
+| Self-hosted vLLM (tunnel/proxy) | `https://vllm.example.com/v1` |
+| OpenAI | `https://api.openai.com/v1` |
+| OpenRouter | `https://openrouter.ai/api/v1` |
+| Groq | `https://api.groq.com/openai/v1` |
+| Together | `https://api.together.xyz/v1` |
+| Ollama | `http://<host>:11434/v1` |
+
+> Azure OpenAI uses a different path and an `api-key` header — front it with a
+> gateway that exposes OpenAI-style `/v1` if you need it.
 
 ---
 

@@ -37,6 +37,8 @@ jobs:
           vllm-retries: ${{ vars.VLLM_RETRIES || '2' }}
           vllm-url: ${{ secrets.VLLM_URL }}
           vllm-api-key: ${{ secrets.VLLM_API_KEY }}
-          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          # Any extra headers your endpoint needs (Cloudflare Access shown as an example)
+          extra-headers: |
+            CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+            CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

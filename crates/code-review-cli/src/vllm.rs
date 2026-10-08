@@ -19,16 +19,10 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-/// Attach Cloudflare Access service-token headers when configured.
-fn apply_access_headers(mut req: reqwest::RequestBuilder, cfg: &Config) -> reqwest::RequestBuilder {
-    if !cfg.cf_access_client_id.is_empty() {
-        req = req.header("CF-Access-Client-Id", cfg.cf_access_client_id.clone());
-    }
-    if !cfg.cf_access_client_secret.is_empty() {
-        req = req.header(
-            "CF-Access-Client-Secret",
-            cfg.cf_access_client_secret.clone(),
-        );
+/// Attach every configured extra header (e.g. a gateway's auth headers).
+fn apply_extra_headers(mut req: reqwest::RequestBuilder, cfg: &Config) -> reqwest::RequestBuilder {
+    for (name, value) in &cfg.extra_headers {
+        req = req.header(name.as_str(), value.as_str());
     }
     req
 }
@@ -51,7 +45,7 @@ async fn post_chat_completions(
     let max_attempts = cfg.vllm_retries.saturating_add(1);
     let resp: serde_json::Value = 'retry: {
         for attempt in 1..=max_attempts {
-            let result = apply_access_headers(
+            let result = apply_extra_headers(
                 client
                     .post(&url)
                     .header("Authorization", format!("Bearer {}", cfg.vllm_api_key))
@@ -138,7 +132,7 @@ pub async fn resolve_model(client: &reqwest::Client, cfg: &Config) -> Result<Str
 
 /// Returns the first model ID advertised by the vLLM server.
 pub async fn detect_model(client: &reqwest::Client, cfg: &Config) -> Result<String, AppError> {
-    let resp: ModelsResponse = apply_access_headers(
+    let resp: ModelsResponse = apply_extra_headers(
         client
             .get(cfg.models_url())
             .header("Authorization", format!("Bearer {}", cfg.vllm_api_key)),
@@ -166,17 +160,22 @@ pub async fn detect_model(client: &reqwest::Client, cfg: &Config) -> Result<Stri
 mod tests {
     use super::*;
 
-    fn cfg_with_access(id: &str, secret: &str) -> Config {
+    fn cfg_with_extra(headers: &[(&str, &str)]) -> Config {
         let mut cfg = Config::from_env();
-        cfg.cf_access_client_id = id.to_string();
-        cfg.cf_access_client_secret = secret.to_string();
+        cfg.extra_headers = headers
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
         cfg
     }
 
     #[test]
-    fn access_headers_added_when_set() {
-        let cfg = cfg_with_access("id123", "secret456");
-        let req = apply_access_headers(
+    fn extra_headers_added_when_set() {
+        let cfg = cfg_with_extra(&[
+            ("CF-Access-Client-Id", "id123"),
+            ("CF-Access-Client-Secret", "secret456"),
+        ]);
+        let req = apply_extra_headers(
             reqwest::Client::new().get("http://localhost/v1/models"),
             &cfg,
         )
@@ -190,9 +189,9 @@ mod tests {
     }
 
     #[test]
-    fn access_headers_absent_when_empty() {
-        let cfg = cfg_with_access("", "");
-        let req = apply_access_headers(
+    fn extra_headers_absent_when_empty() {
+        let cfg = cfg_with_extra(&[]);
+        let req = apply_extra_headers(
             reqwest::Client::new().get("http://localhost/v1/models"),
             &cfg,
         )

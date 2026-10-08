@@ -1,6 +1,6 @@
 # code-review
 
-GitHub Composite Action that runs on **GitHub-hosted runners**, reviews **Pull Requests and Issues**, and posts a structured Markdown comment. It reaches a private self-hosted [vLLM](https://github.com/vllm-project/vllm) instance through a **Cloudflare Tunnel** (no inbound port).
+GitHub Composite Action that runs on **GitHub-hosted runners**, reviews **Pull Requests and Issues**, and posts a structured Markdown comment. It talks to any **OpenAI-compatible** endpoint (e.g. a self-hosted [vLLM](https://github.com/vllm-project/vllm)), which you expose to the runners yourself.
 
 The action downloads a pre-compiled **Rust binary** from GitHub Releases and executes it directly — no `setup-python`, no `pip install`, startup time is ~1 second plus inference.
 
@@ -26,13 +26,13 @@ completes. Repos that already run CI on PRs may instead point
 >
 > The CLI binary is fetched from `releases/latest`, so a SHA pin freezes the
 > action logic but **not** the binary — cut a tagged release for each change you
-> want live (see the [setup guide](setup-cloudflare-tunnel.md#notes)).
+> want live (see the [endpoint guide](recipes/expose-private-endpoint.md#notes)).
 
 ## Inputs
 
 | Input                     | Required | Default | Description                                                     |
 | ------------------------- | -------- | ------- | --------------------------------------------------------------- |
-| `vllm-url`                | yes      | —       | Base URL of the vLLM server (e.g. `https://vllm.example.com/v1`) |
+| `vllm-url`                | yes      | —       | OpenAI-compatible base URL (e.g. `https://vllm.example.com/v1`)  |
 | `github-token`            | yes      | —       | Token for fetching the diff/issue and posting the comment       |
 | `target-type`             | no       | `pr`    | `pr` or `issue`                                                 |
 | `target-number`           | no       | `""`    | PR/issue number; falls back to the event's number               |
@@ -40,21 +40,22 @@ completes. Repos that already run CI on PRs may instead point
 | `vllm-model`              | no       | `""`    | Model override — auto-detected if empty                         |
 | `vllm-timeout`            | no       | `120`   | Total request timeout in seconds                                |
 | `vllm-retries`            | no       | `2`     | Number of retries on LLM request failure                        |
-| `vllm-api-key`            | no       | `""`    | vLLM bearer key                                                 |
-| `cf-access-client-id`     | no       | `""`    | Cloudflare Access service token id                              |
-| `cf-access-client-secret` | no       | `""`    | Cloudflare Access service token secret                          |
+| `vllm-api-key`            | no       | `""`    | Bearer key (`Authorization: Bearer …`)                          |
+| `extra-headers`           | no       | `""`    | Extra headers, one `Name: Value` per line (e.g. gateway tokens) |
 
 ## Prerequisites
 
-| Requirement         | Details                                                                                   |
-| ------------------- | ----------------------------------------------------------------------------------------- |
-| vLLM server         | Running with `--api-key`; reachable from the internet via a tunnel                        |
-| Cloudflare Tunnel   | `cloudflared` publishes e.g. `vllm.example.com` (outbound only — no inbound port)         |
-| Cloudflare Access   | A **Service Auth** policy on the hostname; provides a client id + secret                  |
-| Repository secrets  | `VLLM_URL`, `VLLM_API_KEY`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`              |
-| Repository variable | `VLLM_MODEL`, `VLLM_TIMEOUT`, `VLLM_RETRIES` (optional; consumed via `vars.*`)            |
+| Requirement        | Details                                                                        |
+| ------------------ | ------------------------------------------------------------------------------ |
+| Endpoint           | Any OpenAI-compatible, HTTPS-reachable `…/v1` endpoint (self-hosted or hosted) |
+| Authentication     | Optional bearer key (`vllm-api-key`) and/or extra headers (e.g. gateway tokens) |
+| Repository secrets | `VLLM_URL`, `VLLM_API_KEY` (+ any header secrets your endpoint needs)          |
+| Repository vars    | `VLLM_MODEL`, `VLLM_TIMEOUT`, `VLLM_RETRIES` (optional; consumed via `vars.*`) |
 
-→ Full setup guide: [**Remote vLLM via Cloudflare Tunnel + Access**](setup-cloudflare-tunnel.md).
+Any provider exposing OpenAI-style `POST /v1/chat/completions` and `GET /v1/models`
+works (self-hosted vLLM, OpenAI, OpenRouter, Groq, Together, Ollama…). The endpoint
+must be reachable from GitHub-hosted runners; if it is private, publish it first —
+see [**Reaching a private inference endpoint**](recipes/expose-private-endpoint.md).
 
 ## How it works
 
@@ -93,7 +94,7 @@ code-review/
 └── action.yml                    # Composite Action definition
 crates/code-review-cli/src/
 ├── main.rs                       # Orchestration
-├── config.rs                     # .env loading
+├── config.rs                     # Environment configuration (incl. extra headers)
 ├── github.rs                     # PR diff / issue context fetch, source fetch, comment posting
 ├── source.rs                     # Source-file context fetching
 ├── review.rs                     # Chunking, vLLM calls, verification/summarization, issue triage
