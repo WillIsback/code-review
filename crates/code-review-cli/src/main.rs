@@ -26,7 +26,10 @@ async fn main() {
         }
     };
 
-    let target_number = match resolve_target_number(&gh, &client).await {
+    // Use a client with the full vLLM timeout for LLM/API requests
+    let llm_client = cfg.http_client();
+
+    let target_number = match resolve_target_number(&gh, &llm_client).await {
         Ok(n) => n,
         Err(e) => {
             eprintln!("Could not resolve target number: {e}");
@@ -53,9 +56,6 @@ async fn main() {
         gh.repository,
         target_number
     );
-
-    // Use a client with the full vLLM timeout for LLM/API requests
-    let llm_client = cfg.http_client();
 
     let review_text = match gh.target_type {
         TargetType::Pr => review_pr(&gh, target_number, &model, &llm_client, &cfg).await,

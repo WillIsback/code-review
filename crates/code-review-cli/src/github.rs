@@ -11,7 +11,7 @@ pub enum TargetType {
 impl TargetType {
     fn from_env() -> Self {
         match env::var("TARGET_TYPE").ok().as_deref() {
-            Some("issue") => TargetType::Issue,
+            Some(s) if s.eq_ignore_ascii_case("issue") => TargetType::Issue,
             _ => TargetType::Pr,
         }
     }
@@ -27,10 +27,16 @@ pub struct GithubConfig {
 
 impl GithubConfig {
     pub fn from_env() -> Result<Self, String> {
-        let target_number = env::var("TARGET_NUMBER")
+        let raw_target = env::var("TARGET_NUMBER")
             .ok()
-            .or_else(|| env::var("PULL_REQUEST_NUMBER").ok())
-            .and_then(|v| v.trim().parse::<u64>().ok());
+            .or_else(|| env::var("PULL_REQUEST_NUMBER").ok());
+        let target_number = match raw_target {
+            None => None,
+            Some(v) if v.trim().is_empty() => None,
+            Some(v) => Some(v.trim().parse::<u64>().map_err(|_| {
+                format!("TARGET_NUMBER/PULL_REQUEST_NUMBER must be a number, got: {v}")
+            })?),
+        };
         Ok(Self {
             repository: env::var("GITHUB_REPOSITORY")
                 .map_err(|_| "GITHUB_REPOSITORY must be set")?,
@@ -260,9 +266,35 @@ pub async fn fetch_issue_context(
     let comments_url = format!(
         "https://api.github.com/repos/{repository}/issues/{issue_number}/comments?per_page=100"
     );
-    let comments = github_get_json(&comments_url, token, client).await?;
+    let comments = match github_get_json(&comments_url, token, client).await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Warning: could not fetch issue comments ({e}); continuing without them.");
+            Value::Array(Vec::new())
+        }
+    };
 
     Ok(format_issue_context(&issue, &comments))
+}
+
+/// Build the Contents API URL for a file path, percent-encoding each segment.
+fn contents_url(repository: &str, path: &str, git_ref: &str) -> Result<reqwest::Url, String> {
+    let mut url = reqwest::Url::parse("https://api.github.com").map_err(|e| e.to_string())?;
+    {
+        let mut segments = url
+            .path_segments_mut()
+            .map_err(|_| "cannot build URL path segments".to_string())?;
+        segments.push("repos");
+        for part in repository.split('/') {
+            segments.push(part);
+        }
+        segments.push("contents");
+        for part in path.split('/') {
+            segments.push(part);
+        }
+    }
+    url.query_pairs_mut().append_pair("ref", git_ref);
+    Ok(url)
 }
 
 /// Fetch modified source files at `git_ref` via the Contents API (raw bytes).
@@ -282,10 +314,15 @@ pub async fn fetch_source_files(
             continue;
         }
 
-        let url =
-            format!("https://api.github.com/repos/{repository}/contents/{path}?ref={git_ref}");
+        let url = match contents_url(repository, path, git_ref) {
+            Ok(u) => u,
+            Err(e) => {
+                eprintln!("Failed to build URL for {path}: {e}");
+                continue;
+            }
+        };
         let resp = client
-            .get(&url)
+            .get(url)
             .header("Authorization", format!("token {token}"))
             .header("User-Agent", "code-review-cli")
             .header("Accept", "application/vnd.github.v3.raw")
@@ -358,6 +395,15 @@ mod tests {
     }
 
     #[test]
+    fn contents_url_encodes_path_segments() {
+        let url = contents_url("owner/repo", "src/a b#c.rs", "deadbeef").unwrap();
+        let s = url.as_str();
+        assert!(s.starts_with("https://api.github.com/repos/owner/repo/contents/"));
+        assert!(s.contains("src/a%20b%23c.rs"));
+        assert!(s.ends_with("?ref=deadbeef"));
+    }
+
+    #[test]
     fn first_pr_number_empty_is_none() {
         let v = serde_json::json!([]);
         assert_eq!(first_pr_number(&v), None);
@@ -424,7 +470,7 @@ mod tests {
         unsafe {
             std::env::set_var("GITHUB_REPOSITORY", "owner/repo");
             std::env::set_var("GITHUB_TOKEN", "ghp_test");
-            std::env::set_var("TARGET_TYPE", "issue");
+            std::env::set_var("TARGET_TYPE", "Issue");
         }
         let cfg = GithubConfig::from_env().expect("env vars are set");
         assert_eq!(cfg.target_type, TargetType::Issue);
@@ -432,6 +478,25 @@ mod tests {
             std::env::remove_var("GITHUB_REPOSITORY");
             std::env::remove_var("GITHUB_TOKEN");
             std::env::remove_var("TARGET_TYPE");
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn env_config_rejects_non_numeric_target() {
+        unsafe {
+            std::env::set_var("GITHUB_REPOSITORY", "owner/repo");
+            std::env::set_var("GITHUB_TOKEN", "ghp_test");
+            std::env::set_var("TARGET_NUMBER", "abc");
+            std::env::remove_var("TARGET_TYPE");
+        }
+        let result = GithubConfig::from_env();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("must be a number"));
+        unsafe {
+            std::env::remove_var("GITHUB_REPOSITORY");
+            std::env::remove_var("GITHUB_TOKEN");
+            std::env::remove_var("TARGET_NUMBER");
         }
     }
 
