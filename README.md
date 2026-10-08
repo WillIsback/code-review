@@ -14,7 +14,9 @@ The action downloads a pre-compiled **Rust binary** from GitHub Releases and exe
 | Cloudflare Tunnel   | `cloudflared` publishes e.g. `vllm.example.com` (outbound only — no inbound port)         |
 | Cloudflare Access   | A **Service Auth** policy on the hostname; provides a client id + secret                  |
 | Repository secrets  | `VLLM_URL`, `VLLM_API_KEY`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`              |
-| Repository variable | `VLLM_MODEL` (optional; skips `/v1/models` auto-detection)                                |
+| Repository variable | `VLLM_MODEL`, `VLLM_TIMEOUT`, `VLLM_RETRIES` (optional; consumed via `vars.*`)            |
+
+→ Full setup guide: [**Remote vLLM via Cloudflare Tunnel + Access**](docs/setup-cloudflare-tunnel.md).
 
 ---
 
@@ -35,6 +37,10 @@ completes. Repos that already run CI on PRs may instead point
 > ```yaml
 > uses: WillIsback/code-review@<full-sha>
 > ```
+>
+> The CLI binary is fetched from `releases/latest`, so a SHA pin freezes the
+> action logic but **not** the binary — cut a tagged release for each change you
+> want live. See the [setup guide](docs/setup-cloudflare-tunnel.md#notes).
 
 ### Security model
 
