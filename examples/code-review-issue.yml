@@ -6,19 +6,19 @@ on:
 
 permissions:
   issues: write
-  contents: read
+
+# SECURITY: replace <full-sha> with the full commit SHA of a reviewed release of
+# WillIsback/code-review. NEVER use @main here — this workflow holds secrets.
 
 jobs:
   triage:
     # Public repos: only trusted authors trigger paid inference. Relax or replace
     # with a label check if you want community triage.
-    if: >
-      contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'),
-               github.event.issue.author_association)
+    if: contains(fromJson('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
     runs-on: ubuntu-latest
     steps:
       - name: AI Issue Triage
-        uses: WillIsback/code-review@main # pin to a full commit SHA in production
+        uses: WillIsback/code-review@<full-sha>
         with:
           target-type: issue
           target-number: ${{ github.event.issue.number }}
