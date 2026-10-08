@@ -424,6 +424,23 @@ const ISSUE_USER_TEMPLATE: &str = concat!(
     "Issue:\n"
 );
 
+/// Truncate `s` to roughly `max` chars on a char boundary, appending a note.
+fn truncate_chars(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    let cutoff = s
+        .char_indices()
+        .map(|(i, _)| i)
+        .take_while(|&i| i <= max)
+        .last()
+        .unwrap_or(0);
+    format!(
+        "{}\n\n[... truncated to {max} characters ...]",
+        &s[..cutoff]
+    )
+}
+
 /// Triage an issue from its formatted title/body/comments context.
 pub async fn review_issue(
     context: &str,
@@ -434,6 +451,7 @@ pub async fn review_issue(
     if context.trim().is_empty() {
         return None;
     }
+    let context = truncate_chars(context, cfg.review_max_context);
     let messages = vec![
         ChatMessage {
             role: "system",
@@ -907,5 +925,15 @@ mod tests {
     #[test]
     fn issue_system_prompt_forbids_inventing() {
         assert!(ISSUE_SYSTEM_PROMPT.contains("Do not invent"));
+    }
+
+    #[test]
+    fn truncate_chars_respects_budget_and_char_boundaries() {
+        let s = "aé😀bcdef";
+        let out = truncate_chars(s, 4);
+        assert!(out.len() <= 4 + 80, "output must be near the budget");
+        assert!(out.contains("truncated"));
+        // short strings pass through unchanged
+        assert_eq!(truncate_chars("hello", 100), "hello");
     }
 }

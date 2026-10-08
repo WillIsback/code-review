@@ -88,9 +88,9 @@ code-review/
 crates/code-review-cli/src/
 ├── main.rs                       # Orchestration
 ├── config.rs                     # .env loading
-├── github.rs                     # GitHub API (diff, issue, comment)
+├── github.rs                     # PR diff / issue context fetch, source fetch, comment posting
 ├── source.rs                     # Source-file context fetching
-├── review.rs                     # Chunking, review strategy, comment posting
+├── review.rs                     # Chunking, vLLM calls, verification/summarization, issue triage
 ├── vllm.rs                       # vLLM client
 └── error.rs                      # Error types
 ```
