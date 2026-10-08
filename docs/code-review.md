@@ -52,11 +52,13 @@ completes. Repos that already run CI on PRs may instead point
 
 ## How it works
 
-1. **Download binary** — the action fetches `code-review-cli-linux-amd64` (or `arm64`) from GitHub Releases and makes it executable
-2. **Fetch context** — for PRs, fetches all changed files via the GitHub REST API, with automatic pagination (up to 50 pages of 100 files each); for issues, fetches the issue title, body, and comments instead of a diff
+1. **Download binary** — the action fetches `code-review-cli-linux-amd64` (or `arm64`) from GitHub Releases, verifies the SHA-256 checksum, and makes it executable
+2. **Fetch context** — for PRs, fetches all changed files via the GitHub REST API, following Link-header pagination with no fixed page cap; for issues, fetches the issue title, body, and comments instead of a diff
 3. **Model detection** — uses `VLLM_MODEL` input if set; otherwise queries `GET /v1/models` to auto-detect the loaded model
-4. **Chunked review** — splits large diffs into ~2000-word chunks and sends each to the vLLM chat completions endpoint
-5. **Post comment** — aggregates chunk reviews into a single Markdown comment and posts it on the PR (truncated safely at 60 000 characters)
+4. **Review strategy** (chosen automatically based on diff size):
+   - **Single-round** (1 file changed) — the full diff is sent in one `chat/completions` call
+   - **Two-round** (multiple files) — the diff is split by file into ~2000-word chunks and reviewed **sequentially** (bullet findings); a **verification** pass then checks each finding against the actual source files (fetched from the repo at the PR head SHA via the GitHub Contents API) to confirm, downgrade, or filter it. If verification cannot run, it falls back to a summarization pass.
+5. **Post comment** — aggregates the findings into a single Markdown comment and posts it on the PR (truncated safely at 60 000 characters)
 
 ## Issue triage
 

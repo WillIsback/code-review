@@ -22,6 +22,9 @@ jobs:
         with:
           target-type: issue
           target-number: ${{ github.event.issue.number }}
+          vllm-model: ${{ vars.VLLM_MODEL || '' }}
+          vllm-timeout: ${{ vars.VLLM_TIMEOUT || '120' }}
+          vllm-retries: ${{ vars.VLLM_RETRIES || '2' }}
           vllm-url: ${{ secrets.VLLM_URL }}
           vllm-api-key: ${{ secrets.VLLM_API_KEY }}
           cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}

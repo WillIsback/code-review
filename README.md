@@ -72,11 +72,11 @@ Store `vllm-model`, `vllm-timeout`, and `vllm-retries` as **repository variables
 ## How it works
 
 1. **Download binary** — fetches the pre-compiled `code-review-cli` for `amd64` or `arm64` from GitHub Releases, verifies the SHA-256 checksum, and makes it executable
-2. **Fetch context** — for PRs, retrieves all changed files via the GitHub REST API with automatic Link-header pagination; skips lock files, dotfiles, and Markdown. For issues, fetches the issue title, body, and comments instead of a diff.
+2. **Fetch context** — for PRs, retrieves all changed files via the GitHub REST API with automatic Link-header pagination; skips lock files, dotfiles, and `.md`/`.mdx` documentation files. For issues, fetches the issue title, body, and comments instead of a diff.
 3. **Model detection** — uses `VLLM_MODEL` if set; otherwise queries `GET /v1/models` to auto-detect the loaded model
 4. **Review strategy** (chosen automatically based on diff size):
-   - **Single-round** (1 file changed) — sends the full diff in one `chat/completions` call, returns a structured Markdown report
-   - **Two-round** (multiple files) — breaks the diff into ~2000-word chunks, reviews each in parallel bullet format, then feeds all findings into a reasoning summarisation call to produce the final report
+   - **Single-round** (1 file changed) — the full diff is sent in one `chat/completions` call, returning a structured Markdown report
+   - **Two-round** (multiple files) — the diff is split by file into ~2000-word chunks and reviewed **sequentially** (bullet findings); a **verification** pass then checks each finding against the actual source files (fetched from the repo at the PR head SHA via the GitHub Contents API) to confirm, downgrade, or filter it. If verification cannot run, it falls back to a summarization pass.
 5. **Post comment** — posts the structured Markdown report as a PR comment (truncated at 60 000 characters to respect GitHub's limit)
 
 → [Full documentation](docs/code-review.md)
@@ -87,6 +87,6 @@ Store `vllm-model`, `vllm-timeout`, and `vllm-retries` as **repository variables
 
 ```bash
 cp .env.example .env
-# Fill in VLLM_BASE_URL and GITHUB_TOKEN in .env
+# Fill in GITHUB_REPOSITORY, GITHUB_TOKEN, and VLLM_BASE_URL in .env
 cargo build --release
 ```
