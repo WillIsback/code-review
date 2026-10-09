@@ -13,7 +13,7 @@ The action downloads a pre-compiled **Rust binary** from GitHub Releases and exe
 | Endpoint           | Any OpenAI-compatible, HTTPS-reachable `…/v1` endpoint (self-hosted or hosted) |
 | Authentication     | Optional bearer key (`vllm-api-key`) and/or extra headers (e.g. gateway tokens) |
 | Repository secrets | `VLLM_URL`, `VLLM_API_KEY` (+ any header secrets your endpoint needs)          |
-| Repository vars    | `VLLM_MODEL`, `VLLM_TIMEOUT`, `VLLM_RETRIES` (optional; consumed via `vars.*`) |
+| Repository vars    | `VLLM_MODEL`, `VLLM_TIMEOUT`, `VLLM_RETRIES`, `VLLM_VERIFY_MAX_TOKENS` (optional; consumed via `vars.*`) |
 
 The endpoint must be reachable from GitHub-hosted runners. If it is private,
 publish it first — see [**Reaching a private inference endpoint**](docs/recipes/expose-private-endpoint.md)
@@ -99,7 +99,8 @@ Any provider exposing OpenAI-style `POST /v1/chat/completions` and `GET /v1/mode
 4. **Review strategy** (chosen automatically based on diff size):
    - **Single-round** (1 file changed) — the full diff is sent in one `chat/completions` call, returning a structured Markdown report
    - **Two-round** (multiple files) — the diff is split by file into ~2000-word chunks and reviewed **sequentially** (bullet findings); a **verification** pass then checks each finding against the actual source files (fetched from the repo at the PR head SHA via the GitHub Contents API) to confirm, downgrade, or filter it. If verification cannot run, it falls back to a summarization pass.
-5. **Post comment** — posts the structured Markdown report as a PR comment (truncated at 60 000 characters to respect GitHub's limit)
+5. **Deterministic report cleanup** — the two-round output is post-processed locally (no extra LLM call): only the final report is kept (verification reasoning and YAML front-matter are stripped), exact-duplicate table rows are merged, dangling headings left by a truncated generation are trimmed, and the claimed `findings_total` is reconciled with the actual number of rows. When some modified files could not be fetched, a coverage caveat is prepended to the report.
+6. **Post comment** — posts the structured Markdown report as a PR comment (truncated at 60 000 characters to respect GitHub's limit). The comment carries a hidden marker and is **updated in place** on subsequent runs instead of stacking a new comment per run.
 
 → [Full documentation](docs/code-review.md)
 

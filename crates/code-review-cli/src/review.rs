@@ -174,9 +174,13 @@ const SINGLE_ROUND_USER_TEMPLATE: &str = concat!(
 /// Review a diff using the appropriate strategy:
 /// - 1 file  -> single round (one direct `chat_complete` call)
 /// - N files -> two rounds (per-chunk bullets + verification against source)
+///
+/// `unfetched` lists modified files whose source could not be retrieved; when
+/// non-empty, a coverage caveat is prepended to the published report.
 pub async fn review_diff(
     diff: &str,
     source_files: &[(String, String)],
+    unfetched: &[String],
     model: &str,
     client: &reqwest::Client,
     cfg: &Config,
@@ -195,11 +199,19 @@ pub async fn review_diff(
         }
     );
 
-    if file_count <= 1 {
+    let report = if file_count <= 1 {
         single_round_review(diff, source_files, model, client, cfg).await
     } else {
         multi_round_review(diff, source_files, model, client, cfg).await
-    }
+    };
+
+    report.map(|r| {
+        if unfetched.is_empty() {
+            r
+        } else {
+            format!("{}\n\n{}", crate::report::coverage_caveat(unfetched), r)
+        }
+    })
 }
 
 async fn single_round_review(
@@ -280,7 +292,20 @@ async fn multi_round_review(
     // Round 2: verify findings against source code, fallback to summarize
     let verified = verify_findings(&valid_reviews, source_files, model, client, cfg).await;
     match verified {
-        Some(report) => Some(report),
+        Some(report) => {
+            // Deterministic post-processing: keep only the final report,
+            // strip leaked reasoning/front-matter, dedup rows, trim dangling
+            // headings. Falls back to the raw output if cleaning empties it.
+            let (clean, notes) = crate::report::sanitize(&report);
+            for note in &notes {
+                eprintln!("report: {note}");
+            }
+            if clean.trim().is_empty() {
+                Some(report)
+            } else {
+                Some(clean)
+            }
+        }
         None => {
             // Fallback to summarization if verification fails
             match summarize_review(&valid_reviews, model, client, cfg).await {
@@ -302,16 +327,24 @@ const VERIFY_SYSTEM_PROMPT: &str =
      Your job is to FILTER, not to ADD. For each finding, determine if it is correct based on the \
      evidence in the source code provided. Be skeptical of findings that make claims about APIs, \
      frameworks, or language features that cannot be verified from the code. \
-     Reject any finding that is speculative or factually incorrect.";
+     Reject any finding that is speculative or factually incorrect. \
+     Never reason out loud: no self-corrections, no re-readings, no chain-of-thought. \
+     Decide silently, then write only the final verdict and its short reason.";
 
 const VERIFY_USER_TEMPLATE: &str = concat!(
     "Verify each finding below against the source code provided.\n\n",
-    "For each finding, classify as:\n",
+    "## Step 1 — verdict table\n\n",
+    "Output one compact table with your verdict for every finding:\n\n",
+    "| # | Verdict | Reason |\n",
+    "|---|---------|--------|\n",
+    "| <n> | CONFIRMED / REJECTED / DOWNGRADED | One short sentence, max 25 words |\n\n",
+    "Verdicts:\n",
     "- CONFIRMED -- the issue is real and verifiable in the source code\n",
     "- REJECTED -- the issue is incorrect, speculative, or based on wrong assumptions\n",
-    "- DOWNGRADED -- the issue exists but the severity is inflated (specify correct severity)\n\n",
-    "Then produce the final report containing ONLY confirmed (and downgraded) findings,\n",
-    "using this exact structure:\n\n",
+    "- DOWNGRADED -- the issue exists but the severity is inflated (give correct severity in the report)\n\n",
+    "## Step 2 — final report\n\n",
+    "Then output the final report containing ONLY confirmed and downgraded findings, ",
+    "in exactly this structure:\n\n",
     "---\n",
     "findings_total: <count of confirmed + downgraded findings, or 0>\n",
     "top_files:\n",
@@ -319,27 +352,40 @@ const VERIFY_USER_TEMPLATE: &str = concat!(
     "risk_score: <critical|high|medium|low|none>\n",
     "---\n\n",
     "## 🔍 AI Code Review\n\n",
-    "### 📋 Summary\n",
+    "### 📋 Summary\n\n",
     "Write 2-4 sentences summarizing the changes and verified findings.\n\n",
-    "### 🛠 Code Quality Issues\n",
+    "### 🛠 Code Quality Issues\n\n",
     "| # | Location | Issue | Severity |\n",
     "|---|----------|-------|----------|\n",
-    "(only confirmed/downgraded findings)\n\n",
-    "For each confirmed issue:\n",
-    "#### Issue N: <title>\n",
-    "**Verified:** Explain what in the source code confirms this issue.\n",
-    "**Suggestion:** Concrete fix.\n\n",
-    "### 🔒 Security Issues\n",
+    "| <n> | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "### 🔒 Security Issues\n\n",
     "| # | Location | Issue | Risk Level |\n",
     "|---|----------|-------|------------|\n",
-    "(only confirmed/downgraded findings)\n\n",
-    "### ✅ What Looks Good\n",
+    "| <n> | `file:line` | Description | 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low |\n\n",
+    "For each finding above, add a detail block after its table:\n\n",
+    "#### Issue N: <short title>\n",
+    "**Verified:** What in the source code confirms this (1-2 sentences).\n",
+    "**Suggestion:** Concrete fix.\n\n",
+    "### ✅ What Looks Good\n\n",
     "List 2-3 positive aspects.\n\n",
     "Rules:\n",
     "- Do NOT add new findings -- only verify the ones provided\n",
-    "- REJECTED findings must NOT appear in the final report\n",
-    "- An empty table is a valid outcome if all findings were rejected\n",
-    "- Sort confirmed findings: Critical first, then High, Medium, Low\n\n",
+    "- CRITICAL: EVERY CONFIRMED or DOWNGRADED finding MUST appear in one of the two report tables. ",
+    "A confirmed finding missing from the report tables is an output error.\n",
+    "- findings_total MUST equal the total number of table rows in both tables\n",
+    "- REJECTED findings must NOT appear in the report\n",
+    "- Deduplicate: merge findings that describe the same underlying problem found in several places ",
+    "into a single row; do not emit near-identical rows\n",
+    "- Sort table rows: Critical first, then High, Medium, Low; use the emoji severity badges\n",
+    "- EVERY table row MUST have a matching detail block below its table\n",
+    "- An empty report is a valid outcome if all findings were rejected\n",
+    "- Do NOT cite standards (RFCs, specs) unless you are certain of their EXACT requirement. ",
+    "Example of a common mistake: RFC 6749 section 5.2 actually mandates HTTP 400 for invalid ",
+    "credentials at the OAuth2 token endpoint, so returning 400 there is compliant. ",
+    "If you are not certain something violates a standard, DOWNGRADE it to Low or REJECT it -- ",
+    "never CONFIRM a spec violation you have not verified.\n",
+    "- The verdict table is data, not prose: no chain-of-thought, no self-corrections, ",
+    "no 'let me re-read', no reasoning longer than the one-sentence Reason cell\n\n",
     "[FINDINGS TO VERIFY]\n\n",
 );
 
@@ -510,7 +556,7 @@ pub async fn verify_findings(
         source_files.len()
     );
 
-    match vllm::chat_complete(&messages, model, 4096, 0.1, client, cfg).await {
+    match vllm::chat_complete(&messages, model, cfg.verify_max_tokens, 0.1, client, cfg).await {
         Ok(text) => Some(text),
         Err(e) => {
             eprintln!("Warning: verification failed: {e}");
@@ -911,6 +957,82 @@ mod tests {
         assert!(VERIFY_USER_TEMPLATE.contains("REJECTED"));
         assert!(VERIFY_USER_TEMPLATE.contains("DOWNGRADED"));
         assert!(VERIFY_USER_TEMPLATE.contains("[FINDINGS TO VERIFY]"));
+    }
+
+    #[test]
+    fn verify_template_forbids_chain_of_thought() {
+        assert!(
+            VERIFY_SYSTEM_PROMPT.contains("no self-corrections")
+                && VERIFY_SYSTEM_PROMPT.contains("no chain-of-thought"),
+            "system prompt must forbid visible reasoning"
+        );
+        assert!(
+            VERIFY_USER_TEMPLATE.contains("no 'let me re-read'"),
+            "user template must ban self-correction prose in the verdict table"
+        );
+    }
+
+    #[test]
+    fn verify_template_uses_same_report_format_as_single_round() {
+        for marker in &["🔴 Critical", "🟠 High", "🟡 Medium", "🟢 Low"] {
+            assert!(
+                VERIFY_USER_TEMPLATE.contains(marker),
+                "verify report must use the same emoji severity badges: {marker}"
+            );
+        }
+        assert!(VERIFY_USER_TEMPLATE.contains("### ✅ What Looks Good"));
+        assert!(VERIFY_USER_TEMPLATE.contains("findings_total:"));
+        assert!(VERIFY_USER_TEMPLATE.contains("EVERY table row MUST have a matching detail block"));
+    }
+
+    #[test]
+    fn verify_template_requires_complete_report() {
+        assert!(
+            VERIFY_USER_TEMPLATE
+                .contains("A confirmed finding missing from the report tables is an output error"),
+            "template must forbid losing confirmed findings between verdict and report"
+        );
+        assert!(
+            VERIFY_USER_TEMPLATE
+                .contains("findings_total MUST equal the total number of table rows"),
+            "template must reconcile findings_total with actual rows"
+        );
+        assert!(
+            VERIFY_USER_TEMPLATE
+                .contains("Deduplicate: merge findings that describe the same underlying problem"),
+            "template must require deduplication of repeated findings"
+        );
+    }
+
+    #[test]
+    fn verify_template_guards_spec_citations() {
+        assert!(
+            VERIFY_USER_TEMPLATE
+                .contains("Do NOT cite standards (RFCs, specs) unless you are certain"),
+            "template must forbid unverified spec citations"
+        );
+        assert!(
+            VERIFY_USER_TEMPLATE.contains("RFC 6749 section 5.2"),
+            "template must carry the known counter-example (OAuth2 token endpoint returns 400)"
+        );
+        assert!(
+            VERIFY_USER_TEMPLATE.contains("never CONFIRM a spec violation you have not verified"),
+            "template must downgrade uncertain spec claims instead of confirming them"
+        );
+    }
+
+    #[test]
+    fn verify_template_outputs_verdict_table_before_report() {
+        let verdict_pos = VERIFY_USER_TEMPLATE
+            .find("| # | Verdict | Reason |")
+            .expect("verdict table header");
+        let report_pos = VERIFY_USER_TEMPLATE
+            .rfind("## 🔍 AI Code Review")
+            .expect("report header");
+        assert!(
+            verdict_pos < report_pos,
+            "verdicts must come before the final report so the report can be extracted cleanly"
+        );
     }
 
     #[test]

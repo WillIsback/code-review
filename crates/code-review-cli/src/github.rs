@@ -120,8 +120,97 @@ pub async fn fetch_pr_diff(
     Ok(diff)
 }
 
-/// Post the review text as a PR comment via the GitHub REST API.
-pub async fn post_comment(
+/// Hidden marker identifying comments owned by this tool, enabling
+/// update-in-place instead of posting a new comment on every run.
+const COMMENT_MARKER: &str = "<!-- code-review-cli -->";
+
+/// Find the id of a previously posted review comment in a list-comments JSON
+/// response. A comment qualifies only when its body starts with the hidden
+/// marker AND it was authored by `author` — this prevents overwriting a human
+/// comment that happens to start with the marker. When `author` is `None`
+/// (e.g. the identity lookup failed), the marker alone is trusted.
+fn find_existing_comment(comments: &Value, author: Option<&str>) -> Option<u64> {
+    comments.as_array()?.iter().find_map(|c| {
+        let body = c["body"].as_str()?;
+        if !body.trim_start().starts_with(COMMENT_MARKER) {
+            return None;
+        }
+        match author {
+            Some(login) if c["user"]["login"].as_str() == Some(login) => c["id"].as_u64(),
+            Some(_) => None,
+            None => c["id"].as_u64(),
+        }
+    })
+}
+
+/// Return the login of the authenticated user (used to identify our own
+/// previous comments).
+async fn authenticated_login(token: &str, client: &reqwest::Client) -> Result<String, String> {
+    let resp = client
+        .get("https://api.github.com/user")
+        .header("Authorization", format!("token {token}"))
+        .header("User-Agent", "code-review-cli")
+        .send()
+        .await
+        .map_err(|e| format!("HTTP request failed: {e}"))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("GitHub API returned {status}: {body}"));
+    }
+    let json: Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("invalid JSON: {e}"))?;
+    json["login"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "no login in /user response".to_string())
+}
+
+/// Fetch all comments of an issue/PR, following pagination.
+async fn list_all_comments(
+    repo: &str,
+    number: u64,
+    token: &str,
+    client: &reqwest::Client,
+) -> Result<Vec<Value>, String> {
+    let mut all = Vec::new();
+    let mut page = 1u32;
+    loop {
+        let url = format!(
+            "https://api.github.com/repos/{repo}/issues/{number}/comments?per_page=100&page={page}"
+        );
+        let resp = client
+            .get(&url)
+            .header("Authorization", format!("token {token}"))
+            .header("User-Agent", "code-review-cli")
+            .header("Accept", "application/vnd.github+json")
+            .send()
+            .await
+            .map_err(|e| format!("HTTP request failed: {e}"))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("GitHub API returned {status}: {body}"));
+        }
+        let batch: Vec<Value> = resp
+            .json()
+            .await
+            .map_err(|e| format!("invalid JSON: {e}"))?;
+        let done = batch.len() < 100;
+        all.extend(batch);
+        if done {
+            return Ok(all);
+        }
+        page += 1;
+    }
+}
+
+/// Post the review as a PR comment, updating the previous review comment in
+/// place when one exists (identified by a hidden marker) instead of stacking
+/// a new comment on every run.
+pub async fn post_or_update_comment(
     review: &str,
     repo: &str,
     pr_number: u64,
@@ -129,7 +218,7 @@ pub async fn post_comment(
     client: &reqwest::Client,
 ) -> Result<(), String> {
     const MAX_LEN: usize = 60_000;
-    let mut body = review.to_string();
+    let mut body = format!("{COMMENT_MARKER}\n{review}");
     if body.len() > MAX_LEN {
         let cutoff = MAX_LEN - 50;
         let safe_cut = body
@@ -142,9 +231,42 @@ pub async fn post_comment(
         body.push_str("\n\n[Truncated due to GitHub comment size limit]");
     }
 
-    let url = format!("https://api.github.com/repos/{repo}/issues/{pr_number}/comments");
+    let author = match authenticated_login(token, client).await {
+        Ok(login) => Some(login),
+        Err(e) => {
+            eprintln!(
+                "Warning: could not resolve authenticated user ({e}); matching on marker alone."
+            );
+            None
+        }
+    };
+
+    let existing = match list_all_comments(repo, pr_number, token, client).await {
+        Ok(comments) => {
+            find_existing_comment(&serde_json::Value::Array(comments), author.as_deref())
+        }
+        Err(e) => {
+            eprintln!("Warning: could not list existing comments ({e}); posting a new one.");
+            None
+        }
+    };
+
+    let (method, url) = match existing {
+        Some(id) => {
+            println!("Updating existing review comment #{id}.");
+            (
+                reqwest::Method::PATCH,
+                format!("https://api.github.com/repos/{repo}/issues/comments/{id}"),
+            )
+        }
+        None => (
+            reqwest::Method::POST,
+            format!("https://api.github.com/repos/{repo}/issues/{pr_number}/comments"),
+        ),
+    };
+
     let resp = client
-        .post(&url)
+        .request(method, &url)
         .header("Authorization", format!("token {token}"))
         .header("User-Agent", "code-review-cli")
         .json(&serde_json::json!({ "body": body }))
@@ -299,18 +421,23 @@ fn contents_url(repository: &str, path: &str, git_ref: &str) -> Result<reqwest::
 
 /// Fetch modified source files at `git_ref` via the Contents API (raw bytes).
 /// Rejects unsafe paths and truncates files exceeding `MAX_SOURCE_LINES`.
+/// Returns `(fetched, failed)` where `failed` lists the paths that could not
+/// be retrieved (404, unsafe path, HTTP error) so callers can disclose the
+/// reduced verification coverage.
 pub async fn fetch_source_files(
     repository: &str,
     git_ref: &str,
     paths: &[String],
     token: &str,
     client: &reqwest::Client,
-) -> Vec<(String, String)> {
-    let mut result = Vec::new();
+) -> (Vec<(String, String)>, Vec<String>) {
+    let mut fetched = Vec::new();
+    let mut failed = Vec::new();
 
     for path in paths {
         if !crate::source::is_safe_path(path) {
             eprintln!("Unsafe path rejected (skipping): {path}");
+            failed.push(path.clone());
             continue;
         }
 
@@ -318,6 +445,7 @@ pub async fn fetch_source_files(
             Ok(u) => u,
             Err(e) => {
                 eprintln!("Failed to build URL for {path}: {e}");
+                failed.push(path.clone());
                 continue;
             }
         };
@@ -335,7 +463,7 @@ pub async fn fetch_source_files(
                     let lines: Vec<&str> = content.lines().collect();
                     if lines.len() > crate::source::MAX_SOURCE_LINES {
                         let truncated = lines[..crate::source::MAX_SOURCE_LINES].join("\n");
-                        result.push((
+                        fetched.push((
                             path.clone(),
                             format!(
                                 "{truncated}\n\n[... truncated at {} lines, {} total ...]",
@@ -344,17 +472,26 @@ pub async fn fetch_source_files(
                             ),
                         ));
                     } else {
-                        result.push((path.clone(), content));
+                        fetched.push((path.clone(), content));
                     }
                 }
-                Err(e) => eprintln!("Failed to read {path}: {e}"),
+                Err(e) => {
+                    eprintln!("Failed to read {path}: {e}");
+                    failed.push(path.clone());
+                }
             },
-            Ok(r) => eprintln!("Source fetch failed for {path}: HTTP {}", r.status()),
-            Err(e) => eprintln!("Failed to fetch {path}: {e}"),
+            Ok(r) => {
+                eprintln!("Source fetch failed for {path}: HTTP {}", r.status());
+                failed.push(path.clone());
+            }
+            Err(e) => {
+                eprintln!("Failed to fetch {path}: {e}");
+                failed.push(path.clone());
+            }
         }
     }
 
-    result
+    (fetched, failed)
 }
 
 #[cfg(test)]
@@ -392,6 +529,46 @@ mod tests {
     fn first_pr_number_extracts_number() {
         let v = serde_json::json!([{ "number": 42, "title": "x" }]);
         assert_eq!(first_pr_number(&v), Some(42));
+    }
+
+    #[test]
+    fn find_existing_comment_matches_marker_and_author() {
+        let comments = serde_json::json!([
+            { "id": 1, "user": { "login": "someone" }, "body": "a normal comment" },
+            { "id": 2, "user": { "login": "github-actions[bot]" },
+              "body": "<!-- code-review-cli -->\n## 🔍 AI Code Review\n..." },
+            { "id": 3, "user": { "login": "github-actions[bot]" }, "body": "sonar says hi" }
+        ]);
+        assert_eq!(
+            find_existing_comment(&comments, Some("github-actions[bot]")),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn find_existing_comment_rejects_foreign_marker_comment() {
+        let comments = serde_json::json!([
+            { "id": 9, "user": { "login": "mallory" },
+              "body": "<!-- code-review-cli -->\nmy precious content" }
+        ]);
+        assert_eq!(
+            find_existing_comment(&comments, Some("github-actions[bot]")),
+            None
+        );
+        // Without a known author, the marker alone qualifies.
+        assert_eq!(find_existing_comment(&comments, None), Some(9));
+    }
+
+    #[test]
+    fn find_existing_comment_returns_none_when_absent() {
+        let comments = serde_json::json!([
+            { "id": 1, "body": "just text" }
+        ]);
+        assert_eq!(
+            find_existing_comment(&comments, Some("github-actions[bot]")),
+            None
+        );
+        assert_eq!(find_existing_comment(&serde_json::json!([]), None), None);
     }
 
     #[test]
