@@ -1,6 +1,7 @@
 mod config;
 mod error;
 mod github;
+mod report;
 mod review;
 mod source;
 mod vllm;
@@ -82,8 +83,9 @@ async fn main() {
 
     println!("{review_text}");
 
-    // Post comment (the issues endpoint serves both PRs and issues)
-    match github::post_comment(
+    // Post comment (the issues endpoint serves both PRs and issues).
+    // Updates the previous review comment in place when one exists.
+    match github::post_or_update_comment(
         &review_text,
         &gh.repository,
         target_number,
@@ -92,7 +94,7 @@ async fn main() {
     )
     .await
     {
-        Ok(()) => println!("Review comment posted successfully."),
+        Ok(()) => println!("Review comment posted/updated successfully."),
         Err(e) => {
             eprintln!("Review generated but comment posting failed: {e}");
             std::process::exit(1);
@@ -164,11 +166,19 @@ async fn review_pr(
     };
 
     let paths = source::extract_modified_files(&diff);
-    let source_files = if head_sha.is_empty() {
-        Vec::new()
+    let (source_files, unfetched) = if head_sha.is_empty() {
+        (Vec::new(), paths)
     } else {
-        github::fetch_source_files(&gh.repository, &head_sha, &paths, &gh.token, client).await
+        let (fetched, failed) =
+            github::fetch_source_files(&gh.repository, &head_sha, &paths, &gh.token, client).await;
+        if !failed.is_empty() {
+            eprintln!(
+                "Warning: {} file(s) could not be fetched for verification.",
+                failed.len()
+            );
+        }
+        (fetched, failed)
     };
 
-    review::review_diff(&diff, &source_files, model, client, cfg).await
+    review::review_diff(&diff, &source_files, &unfetched, model, client, cfg).await
 }

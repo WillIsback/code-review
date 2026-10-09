@@ -50,7 +50,7 @@ completes. Repos that already run CI on PRs may instead point
 | Endpoint           | Any OpenAI-compatible, HTTPS-reachable `…/v1` endpoint (self-hosted or hosted) |
 | Authentication     | Optional bearer key (`vllm-api-key`) and/or extra headers (e.g. gateway tokens) |
 | Repository secrets | `VLLM_URL`, `VLLM_API_KEY` (+ any header secrets your endpoint needs)          |
-| Repository vars    | `VLLM_MODEL`, `VLLM_TIMEOUT`, `VLLM_RETRIES` (optional; consumed via `vars.*`) |
+| Repository vars    | `VLLM_MODEL`, `VLLM_TIMEOUT`, `VLLM_RETRIES`, `VLLM_VERIFY_MAX_TOKENS` (optional; consumed via `vars.*`) |
 
 Any provider exposing OpenAI-style `POST /v1/chat/completions` and `GET /v1/models`
 works (self-hosted vLLM, OpenAI, OpenRouter, Groq, Together, Ollama…). The endpoint
@@ -65,7 +65,8 @@ see [**Reaching a private inference endpoint**](recipes/expose-private-endpoint.
 4. **Review strategy** (chosen automatically based on diff size):
    - **Single-round** (1 file changed) — the full diff is sent in one `chat/completions` call
    - **Two-round** (multiple files) — the diff is split by file into ~2000-word chunks and reviewed **sequentially** (bullet findings); a **verification** pass then checks each finding against the actual source files (fetched from the repo at the PR head SHA via the GitHub Contents API) to confirm, downgrade, or filter it. If verification cannot run, it falls back to a summarization pass.
-5. **Post comment** — aggregates the findings into a single Markdown comment and posts it on the PR (truncated safely at 60 000 characters)
+5. **Deterministic report cleanup** — the two-round output is post-processed locally (no extra LLM call): only the final report is kept (verification reasoning and YAML front-matter are stripped), exact-duplicate table rows are merged, dangling headings left by a truncated generation are trimmed, and the claimed `findings_total` is reconciled with the actual number of rows. When some modified files could not be fetched, a coverage caveat is prepended to the report.
+6. **Post comment** — aggregates the findings into a single Markdown comment and posts it on the PR (truncated safely at 60 000 characters). The comment carries a hidden marker and is **updated in place** on subsequent runs instead of stacking a new comment per run.
 
 ## Issue triage
 

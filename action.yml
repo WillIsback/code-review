@@ -23,6 +23,10 @@ inputs:
     description: "Number of retries on LLM request failure"
     required: false
     default: "2"
+  vllm-verify-max-tokens:
+    description: "Max tokens for the two-round verification call (final report generation)"
+    required: false
+    default: "8192"
   vllm-api-key:
     description: "API key for vLLM server authentication (optional, defaults to 'none')"
     required: false
@@ -72,6 +76,7 @@ runs:
         VLLM_MODEL: ${{ inputs.vllm-model }}
         VLLM_TIMEOUT_SECS: ${{ inputs.vllm-timeout }}
         VLLM_RETRIES: ${{ inputs.vllm-retries }}
+        VLLM_VERIFY_MAX_TOKENS: ${{ inputs.vllm-verify-max-tokens }}
         VLLM_API_KEY: ${{ inputs.vllm-api-key }}
         TARGET_TYPE: ${{ inputs.target-type }}
         TARGET_NUMBER: ${{ inputs.target-number || github.event.pull_request.number || github.event.issue.number }}

@@ -8,6 +8,10 @@ pub struct Config {
     pub vllm_timeout_secs: u64,
     pub vllm_retries: u32,
     pub review_max_context: usize,
+    /// Max tokens for the two-round verification call (the final report is
+    /// long; a too-small cap truncates it mid-structure). Env:
+    /// `VLLM_VERIFY_MAX_TOKENS`, default 8192.
+    pub verify_max_tokens: u32,
     /// Extra HTTP headers added to every vLLM request (gateway/auth headers, e.g.
     /// Cloudflare Access service tokens). Parsed from `EXTRA_HEADERS`.
     pub extra_headers: Vec<(String, String)>,
@@ -46,6 +50,10 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(100_000),
+            verify_max_tokens: env::var("VLLM_VERIFY_MAX_TOKENS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(8192),
             extra_headers: parse_extra_headers(&env::var("EXTRA_HEADERS").unwrap_or_default()),
         }
     }
