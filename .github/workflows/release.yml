@@ -5,9 +5,40 @@ on:
     tags:
       - 'v[0-9]+\.[0-9]+\.[0-9]+'
 
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
+  release-gate:
+    name: Release gate (tag sanity)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Tag must point at the default branch head
+        run: |
+          DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+          TAG_SHA=$(git rev-parse "${{ github.ref_name }}^{commit}")
+          HEAD_SHA=$(git rev-parse "origin/${DEFAULT_BRANCH}")
+          if [ "$TAG_SHA" != "$HEAD_SHA" ]; then
+            echo "::error::Tag ${{ github.ref_name }} ($TAG_SHA) does not point at ${DEFAULT_BRANCH} HEAD ($HEAD_SHA)."
+            exit 1
+          fi
+
+      - name: Tag version must match Cargo.toml
+        run: |
+          CARGO_VERSION=$(grep -m1 '^version' crates/code-review-cli/Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          if [ "v${CARGO_VERSION}" != "${{ github.ref_name }}" ]; then
+            echo "::error::Cargo.toml version is ${CARGO_VERSION} but tag is ${{ github.ref_name }}. Bump the crate version."
+            exit 1
+          fi
+
   create-release:
     name: Create GitHub Release
+    needs: release-gate
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -94,6 +125,25 @@ jobs:
         run: |
           cp target/${{ matrix.target }}/release/code-review-cli code-review-cli-${{ matrix.platform }}
 
+      # The binary must execute on the target platform: no banner/exit 1 means
+      # a broken build (wrong arch, missing shared lib, glibc too new).
+      - name: Smoke test binary
+        run: |
+          chmod +x code-review-cli-${{ matrix.platform }}
+          set +e
+          out=$(./code-review-cli-${{ matrix.platform }} 2>&1)
+          rc=$?
+          set -e
+          echo "$out"
+          if [ "$rc" -ne 1 ]; then
+            echo "::error::Binary exited with $rc (expected 1: missing GITHUB_TOKEN)"
+            exit 1
+          fi
+          if ! echo "$out" | grep -q "AI Code Reviewer"; then
+            echo "::error::Binary did not print the startup banner"
+            exit 1
+          fi
+
       - name: Generate SHA-256 checksums
         run: |
           sha256sum code-review-cli-${{ matrix.platform }} > code-review-cli-${{ matrix.platform }}.sha256
@@ -109,7 +159,7 @@ jobs:
 
   release-macos:
     name: Build & Release macOS (${{ matrix.platform }})
-    needs: create-release
+    needs: [release-gate, create-release]
     runs-on: macos-15 # pinned; macos-latest can jump major versions unexpectedly
     permissions:
       contents: write
@@ -145,6 +195,23 @@ jobs:
         run: |
           cp target/${{ matrix.target }}/release/code-review-cli code-review-cli-${{ matrix.platform }}
 
+      - name: Smoke test binary
+        run: |
+          chmod +x code-review-cli-${{ matrix.platform }}
+          set +e
+          out=$(./code-review-cli-${{ matrix.platform }} 2>&1)
+          rc=$?
+          set -e
+          echo "$out"
+          if [ "$rc" -ne 1 ]; then
+            echo "::error::Binary exited with $rc (expected 1: missing GITHUB_TOKEN)"
+            exit 1
+          fi
+          if ! echo "$out" | grep -q "AI Code Reviewer"; then
+            echo "::error::Binary did not print the startup banner"
+            exit 1
+          fi
+
       - name: Generate SHA-256 checksums
         run: |
           shasum -a 256 code-review-cli-${{ matrix.platform }} > code-review-cli-${{ matrix.platform }}.sha256
@@ -160,7 +227,7 @@ jobs:
 
   release-windows:
     name: Build & Release Windows
-    needs: create-release
+    needs: [release-gate, create-release]
     runs-on: windows-latest
     permissions:
       contents: write
@@ -187,6 +254,15 @@ jobs:
           $hash = (Get-FileHash code-review-cli-windows-amd64.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  code-review-cli-windows-amd64.exe" | Out-File -Encoding ascii code-review-cli-windows-amd64.exe.sha256
 
+      - name: Smoke test binary
+        shell: pwsh
+        run: |
+          $out = & .\code-review-cli-windows-amd64.exe 2>&1 | Out-String
+          $rc = $LASTEXITCODE
+          Write-Host $out
+          if ($rc -ne 1) { Write-Host "::error::Binary exited with $rc (expected 1: missing GITHUB_TOKEN)"; exit 1 }
+          if ($out -notmatch "AI Code Reviewer") { Write-Host "::error::Binary did not print the startup banner"; exit 1 }
+
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
@@ -195,3 +271,44 @@ jobs:
             code-review-cli-windows-amd64.exe.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  verify-release:
+    name: Verify published assets
+    needs: [release-linux, release-macos, release-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-download assets and verify checksums
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+          DIR=$(mktemp -d)
+          cd "$DIR"
+          for f in \
+            code-review-cli-linux-amd64 code-review-cli-linux-amd64.sha256 \
+            code-review-cli-linux-arm64 code-review-cli-linux-arm64.sha256 \
+            code-review-cli-macos-amd64 code-review-cli-macos-amd64.sha256 \
+            code-review-cli-macos-arm64 code-review-cli-macos-arm64.sha256 \
+            code-review-cli-windows-amd64.exe code-review-cli-windows-amd64.exe.sha256; do
+            curl -fsSL -o "$f" "https://github.com/${REPO}/releases/download/${TAG}/${f}"
+          done
+          sha256sum -c ./*.sha256
+
+      - name: Smoke test published linux-amd64 binary
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+          DIR=$(mktemp -d)
+          cd "$DIR"
+          curl -fsSL -o code-review-cli-linux-amd64 "https://github.com/${REPO}/releases/download/${TAG}/code-review-cli-linux-amd64"
+          chmod +x code-review-cli-linux-amd64
+          set +e
+          out=$(./code-review-cli-linux-amd64 2>&1)
+          rc=$?
+          set -e
+          echo "$out"
+          if [ "$rc" -ne 1 ] || ! echo "$out" | grep -q "AI Code Reviewer"; then
+            echo "::error::Published linux-amd64 binary does not run"
+            exit 1
+          fi
