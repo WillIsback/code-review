@@ -12,7 +12,7 @@ permissions:
   pull-requests: write
   contents: read
 
-# SECURITY: pinned to the v0.6.0 release commit of WillIsback/code-review.
+# SECURITY: pinned to the v0.7.0 release commit of WillIsback/code-review.
 # Update to the full SHA of the latest reviewed release; NEVER use @main here —
 # this workflow holds secrets.
 
@@ -27,7 +27,7 @@ jobs:
           echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
 
       - name: AI Code Review
-        uses: WillIsback/code-review@ef384e905492f048bc4c07ded5cb2129727793bb # v0.6.0
+        uses: WillIsback/code-review@629ce71d98059ec4b70b7d3ab93094fa39483591 # v0.7.0
         with:
           target-type: pr
           target-number: ${{ steps.ctx.outputs.number }}
