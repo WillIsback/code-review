@@ -345,7 +345,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1085,9 +1085,9 @@ dependencies = [
 
 [[package]]
 name = "octocrab"
-version = "0.54.3"
+version = "0.54.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "728e29b63bddea1d960d64f3aa7034b7a26d4f5a2406abdf2cc23f697ef9c2cb"
+checksum = "c4a95a2ef78a1956cc22593932b9dcf8fbd8c62328d75d04026d8f0dc71bccae"
 dependencies = [
  "arc-swap",
  "base64 0.22.1",
@@ -1511,7 +1511,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
